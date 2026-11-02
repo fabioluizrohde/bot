@@ -10,6 +10,7 @@ Bot que monitora grupos do WhatsApp, identifica promoções em lojas online (Ama
 - **Publicação automática**: envia as promoções formatadas para grupos do WhatsApp e/ou canais do Telegram.
 - **Painel web**: interface local para configurar grupos de origem e destino e acompanhar o funcionamento do bot.
 - **Extensão de navegador**: auxilia na captura manual de promoções direto do navegador.
+- **Assistente de Live Shopee** (`shopee-live/`): extensão que lê os códigos pedidos no chat da live, adiciona os produtos à sacola e destaca o produto da vez. Veja [`shopee-live/README.md`](./shopee-live/README.md).
 - **Deploy pronto para produção**: inclui `Dockerfile` e configuração para Railway.
 
 ## Arquitetura

@@ -1,0 +1,93 @@
+<!doctype html>
+<!-- Página falsa que imita o painel de live da Shopee, só para testes automatizados. -->
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Mock Shopee Live</title>
+<style>
+  body { font-family: sans-serif; margin: 0; display: flex; gap: 20px; padding: 20px; }
+  .x7Chat { width: 300px; height: 400px; overflow: auto; border: 1px solid #ccc; }
+  .k2Msg { padding: 4px; border-bottom: 1px solid #eee; }
+  .k2Msg .u { font-weight: bold; display: block; }
+  .q9Bag { width: 380px; }
+  .q9Item { display: flex; gap: 8px; align-items: center; padding: 6px; border: 1px solid #ddd; margin: 4px 0; }
+  .q9Item.pinned { background: #ffe; }
+  .mdl { position: fixed; top: 60px; left: 340px; background: #fff; border: 2px solid #333; padding: 12px; width: 320px; }
+  .mdl[hidden] { display: none; }
+  .res { display: flex; gap: 6px; padding: 4px; }
+</style>
+</head>
+<body>
+  <section><h3>Chat</h3><div class="x7Chat" id="chat"></div></section>
+  <section class="q9Bag">
+    <h3>Sacola <button class="btnAdd" id="openAdd">Adicionar produtos</button></h3>
+    <div class="q9List" id="bag"></div>
+    <p>Em destaque: <b id="pinned">nenhum</b></p>
+  </section>
+  <div class="mdl" id="modal" hidden>
+    <input class="srch" placeholder="Buscar por nome ou ID">
+    <div class="results" id="results"></div>
+    <button class="ok" id="confirm">Confirmar</button>
+    <button class="cancel" id="cancel">Cancelar</button>
+  </div>
+<script>
+  const inventory = [
+    { id: '1001', name: 'Camiseta Dry Fit Preta' },
+    { id: '1002', name: 'Caneca Térmica 500ml' },
+    { id: '1003', name: 'Boné Aba Curva' },
+    { id: '1004', name: 'Meia Cano Alto Kit 3' },
+    { id: '1005', name: 'Garrafa Squeeze 1L' },
+  ];
+  const bag = [inventory[0], inventory[2]];
+  const added = [];
+  const $ = (s) => document.querySelector(s);
+
+  function renderBag() {
+    $('#bag').innerHTML = '';
+    bag.forEach((p, i) => {
+      const row = document.createElement('div');
+      row.className = 'q9Item';
+      row.innerHTML = `<span class="n">#${i + 1}</span><div class="info"><p class="t">${p.name}</p><p>R$ 49,90</p></div><button class="pinBtn">Destacar</button>`;
+      row.querySelector('button').addEventListener('click', () => {
+        document.querySelectorAll('.q9Item').forEach((r) => r.classList.remove('pinned'));
+        row.classList.add('pinned');
+        $('#pinned').textContent = p.name;
+      });
+      $('#bag').appendChild(row);
+    });
+  }
+
+  window.postChat = (user, text) => {
+    const m = document.createElement('div');
+    m.className = 'k2Msg';
+    m.innerHTML = `<span class="u"></span><span class="t"></span>`;
+    m.children[0].textContent = user;
+    m.children[1].textContent = text;
+    $('#chat').appendChild(m);
+  };
+
+  $('#openAdd').addEventListener('click', () => { $('#modal').hidden = false; $('.srch').value = ''; renderResults(''); });
+  $('#cancel').addEventListener('click', () => { $('#modal').hidden = true; });
+  $('.srch').addEventListener('input', (e) => setTimeout(() => renderResults(e.target.value), 200)); // busca com atraso
+  function renderResults(q) {
+    const nq = q.toLowerCase();
+    const list = q ? inventory.filter((p) => p.name.toLowerCase().includes(nq) || p.id === q) : [];
+    $('#results').innerHTML = list
+      .map((p) => `<label class="res"><input type="checkbox" value="${p.id}"><span>${p.name}</span><small>ID ${p.id}</small></label>`)
+      .join('');
+  }
+  $('#confirm').addEventListener('click', () => {
+    document.querySelectorAll('#results input:checked').forEach((cb) => {
+      const p = inventory.find((x) => x.id === cb.value);
+      if (!bag.includes(p)) { bag.push(p); added.push(p.name); }
+    });
+    $('#modal').hidden = true;
+    renderBag();
+  });
+  window.__added = added;
+  renderBag();
+  postChat('loja_oficial', 'Bem-vindos à live!');
+  postChat('ana', 'boa noite');
+</script>
+</body>
+</html>
