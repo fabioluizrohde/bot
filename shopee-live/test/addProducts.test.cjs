@@ -69,3 +69,8 @@ test('mergeCards: identidade por posição/nó separa homônimos em janelas de r
   assert.strictEqual(t.length, 2);
   assert.deepStrictEqual(t.map((c) => c.name).sort(), ['Capa B', 'Fone A']);
 });
+
+test('decide: nome desconhecido (vazio) nunca marca -> conferir', () => {
+  assert.strictEqual(A.decide('', [card('Fone Bluetooth')]).status, 'conferir');
+  assert.strictEqual(A.decide(undefined, [card('Fone Bluetooth')]).status, 'conferir');
+});

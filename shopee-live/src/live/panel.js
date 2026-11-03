@@ -33,28 +33,37 @@
     return !!el.closest(`[class*="${prefix}"]`);
   }
 
+  // Tira da lista os IDs que já estão num lote EM ANDAMENTO (lote terminado não bloqueia nada).
+  function filterOutBatch(ids, batch) {
+    const ativo = batch && batch.items && batch.phase !== 'done';
+    const noLote = new Set(ativo ? batch.items.map((i) => i.id) : []);
+    return ids.filter((id) => !noLote.has(id));
+  }
+
   // Junta o que foi selecionado à lista atual. Seleção sem IDs não apaga a lista anterior;
-  // seleção com IDs substitui a lista (menos os que já estão no lote).
+  // seleção com IDs substitui a lista (menos os que já estão no lote em andamento).
   function mergeIds(current, selectedText, batch, extract) {
     const ext = extract || (SLA.ids && SLA.ids.extractIds);
     const found = ext(selectedText);
     if (!found.length) return current.slice();
-    const noLote = new Set(batch && batch.items ? batch.items.map((i) => i.id) : []);
-    return found.filter((id) => !noLote.has(id));
+    return filterOutBatch(found, batch);
   }
 
   function removeId(list, id) {
     return list.filter((x) => x !== id);
   }
 
-  // Quais botões aparecem para o estado atual.
-  function viewState(batch, idsCount) {
+  // Quais botões aparecem para o estado atual. "watching" = itens marcados, esperando o Confirmar do Fabio.
+  // A marcação é automática; "Marcar na live" só aparece para tentar de novo (ex.: o Fabio fechou a tela).
+  function viewState(batch, idsCount, watching) {
     const phase = batch ? batch.phase : null;
     const marcaveis = batch && SLA.batch ? SLA.batch.resolvedItems(batch).length : 0;
+    const adding = phase === 'adding' && marcaveis > 0;
     return {
       canProcess: idsCount > 0 && (!batch || phase === 'done'),
       showRetomar: phase === 'resolving', // sempre: o coordenador não percebe se a aba da Shopee foi fechada
-      showMarcar: phase === 'adding' && marcaveis > 0,
+      showMarcar: adding && !watching,
+      showAguardando: adding && !!watching,
       showLimpar: !!batch,
     };
   }
@@ -67,13 +76,16 @@
   }
 
   // Separa o resultado da marcação: "marcado" não é status do lote (fica na memória até o Fabio
-  // confirmar); os demais só passam se forem status válidos do lote.
-  function planMarkResults(res) {
+  // confirmar); os demais só passam se forem status válidos do lote. "jaMarcados": IDs que a
+  // própria extensão marcou numa rodada anterior; se vierem marcados agora, continuam "marcado"
+  // (não "já estava na sacola").
+  function planMarkResults(res, jaMarcados) {
     const validos = new Set(Object.values(SLA.batch.STATUS));
+    const antes = new Set(jaMarcados || []);
     const marcados = [];
     const updates = [];
     for (const r of normalizeResults(res)) {
-      if (r.status === 'marcado') marcados.push(r.id);
+      if (r.status === 'marcado' || (r.status === 'ja_na_sacola' && antes.has(r.id))) marcados.push(r.id);
       else if (validos.has(r.status)) updates.push({ id: r.id, status: r.status });
     }
     return { marcados, updates };
@@ -81,10 +93,10 @@
 
   // ---------- Comportamento no navegador (sem teste automático) ----------
 
-  const state = { ids: [], batch: null, openIn: 'tab', aviso: '', tab: 'lote', marcando: false };
+  // marcados: IDs que a extensão marcou e esperam o Confirmar; stopWatch: vigia do Confirmar ativa (ou null).
+  const state = { ids: [], batch: null, openIn: 'tab', aviso: '', tab: 'lote', marcando: false, marcados: [], stopWatch: null };
   const extraTabs = []; // {key, label, render}
   let shadow = null;
-  let stopWatch = null;
 
   const send = (msg) => chrome.runtime.sendMessage(msg);
 
@@ -100,7 +112,7 @@
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ESC[c]);
 
   function renderLote() {
-    const v = viewState(state.batch, state.ids.length);
+    const v = viewState(state.batch, state.ids.length, !!state.stopWatch);
     let h = '<h4>IDs encontrados no chat</h4>';
     if (state.ids.length) {
       h += '<ul>' + state.ids
@@ -119,6 +131,7 @@
     h += '<div class="row">';
     if (v.showRetomar) h += '<button data-act="reopen">Retomar</button>';
     if (v.showMarcar) h += `<button class="pri" data-act="mark" ${state.marcando ? 'disabled' : ''}>Marcar na live</button>`;
+    if (v.showAguardando) h += '<span class="mut">Aguardando seu Confirmar…</span>';
     if (v.showLimpar) h += '<button data-act="clear">Limpar lote</button>';
     h += '</div>';
     if (state.aviso) h += `<p class="warn">${esc(state.aviso)}</p>`;
@@ -163,15 +176,25 @@
     shadow.querySelector('.body').innerHTML = cur.render();
   }
 
+  function stopWatching() {
+    if (state.stopWatch) state.stopWatch();
+    state.stopWatch = null;
+  }
+
   function setBatch(b) {
+    const anterior = state.batch;
     state.batch = b || null;
-    if (b) state.ids = state.ids.filter((id) => !b.items.some((i) => i.id === id));
+    if (!b || !anterior || anterior.id !== b.id) { // outro lote: esquece o que foi marcado no anterior
+      stopWatching();
+      state.marcados = [];
+    }
+    if (b) state.ids = filterOutBatch(state.ids, b);
     draw();
   }
 
   // Marca na live os produtos favoritados e grava o resultado de cada um no lote.
   async function markAll() {
-    if (state.marcando || !state.batch) return;
+    if (state.marcando || state.stopWatch || !state.batch) return; // já há marcados esperando o Confirmar
     const items = SLA.batch.resolvedItems(state.batch);
     if (!items.length) return;
     const add = SLA.addProducts;
@@ -183,24 +206,37 @@
     state.aviso = '';
     draw();
     try {
-      const { marcados, updates } = planMarkResults(await add.markFavorites(items));
+      const { marcados, updates } = planMarkResults(await add.markFavorites(items), state.marcados);
       for (const r of updates) {
         const nb = await send({ type: 'batch:setStatus', id: r.id, status: r.status });
         if (nb) state.batch = nb;
       }
+      stopWatching(); // no máximo UMA vigia do Confirmar
+      state.marcados = marcados;
       if (marcados.length && add.watchConfirm) {
-        if (stopWatch) stopWatch();
         // Quando o Fabio clicar em Confirmar na Shopee, os marcados viram "adicionado".
-        stopWatch = add.watchConfirm(async () => {
-          for (const id of marcados) {
-            try {
-              const nb = await send({ type: 'batch:setStatus', id, status: 'adicionado' });
-              if (nb) state.batch = nb;
-            } catch (_) { /* ignora */ }
+        let confirmou = false;
+        const parar = add.watchConfirm(
+          async () => {
+            confirmou = true;
+            for (const id of marcados) {
+              try {
+                const nb = await send({ type: 'batch:setStatus', id, status: 'adicionado' });
+                if (nb) state.batch = nb;
+              } catch (_) { /* ignora */ }
+            }
+            state.marcados = [];
+            state.aviso = '';
+            draw();
+          },
+          () => { // a tela de Adicionar Produtos fechou: "Marcar na live" volta, para tentar de novo
+            if (state.stopWatch !== parar) return; // já foi trocada por outra vigia
+            state.stopWatch = null;
+            if (!confirmou) state.aviso = 'A tela de Adicionar Produtos fechou sem Confirmar. Para tentar de novo, clique em Marcar na live.';
+            draw();
           }
-          state.aviso = '';
-          draw();
-        });
+        );
+        state.stopWatch = parar;
       }
       if (marcados.length) state.aviso = `${marcados.length} marcados — confira e clique em Confirmar`;
     } catch (e) {
@@ -302,7 +338,7 @@
     draw();
   }
 
-  SLA.panel = { registerTab, shouldMount, isInsideChat, mergeIds, removeId, statusLabel, viewState, normalizeResults, planMarkResults, init };
+  SLA.panel = { registerTab, shouldMount, isInsideChat, filterOutBatch, mergeIds, removeId, statusLabel, viewState, normalizeResults, planMarkResults, init };
   if (typeof module !== 'undefined' && module.exports) module.exports = SLA.panel;
 
   if (typeof document !== 'undefined' && typeof chrome !== 'undefined' && chrome.runtime) {

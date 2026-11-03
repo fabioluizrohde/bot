@@ -195,8 +195,8 @@
   }
 
   // Só ESCUTA o clique do usuário no "Confirmar" do modal (nunca clica). Devolve a função de cancelar.
-  // Cancela sozinho quando o modal fecha.
-  function watchConfirm(onConfirm) {
+  // Cancela sozinho quando a tela de Adicionar Produtos (aba Meus Favoritos) fecha e então chama onStop.
+  function watchConfirm(onConfirm, onStop) {
     const s = S();
     let ativo = true;
     let timer = null;
@@ -214,7 +214,13 @@
       try { onConfirm(); } catch (_) { /* ignora */ }
     }
     document.addEventListener('click', onClick, true);
-    timer = setInterval(() => { if (!openModals().length) parar(); }, 500);
+    timer = setInterval(() => {
+      if (modalWith(s.favoritesTabText)) return;
+      parar();
+      if (typeof onStop === 'function') {
+        try { onStop(); } catch (_) { /* ignora */ }
+      }
+    }, 500);
     return parar;
   }
 
