@@ -95,5 +95,40 @@
     return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
-  SLA.dom = { sleep, waitFor, visible, text, realClick, typeInto, pressKey, findClickableByText, escapeRe, CLICKABLE };
+  // Elementos "tag" cuja classe contém o prefixo (as classes da Shopee têm sufixo com hash).
+  function qPrefix(rootEl, tag, prefix) {
+    return [...rootEl.querySelectorAll(`${tag}[class*="${prefix}"]`)];
+  }
+
+  // Espera "fn" ficar falsa (ex.: um modal fechar). true se sumiu, false se estourou o tempo.
+  async function waitGone(fn, timeout = 8000, interval = 150) {
+    const end = Date.now() + timeout;
+    for (;;) {
+      let v = null;
+      try {
+        v = fn();
+      } catch (_) {
+        v = null;
+      }
+      if (!v) return true;
+      if (Date.now() > end) return false;
+      await sleep(interval);
+    }
+  }
+
+  // Rola o contêiner em passos até "probe()" ser verdadeiro ou chegar ao fim. Devolve o resultado do probe.
+  async function scrollUntil(scroller, probe, maxSteps = 40) {
+    if (probe()) return true;
+    for (let i = 0; i < maxSteps; i++) {
+      const before = scroller.scrollTop;
+      scroller.scrollTop = before + Math.max(scroller.clientHeight * 0.8, 200);
+      scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+      await sleep(250);
+      if (probe()) return true;
+      if (scroller.scrollTop === before) return false; // chegou ao fim
+    }
+    return !!probe();
+  }
+
+  SLA.dom = { sleep, waitFor, visible, text, realClick, typeInto, pressKey, findClickableByText, escapeRe, CLICKABLE, qPrefix, waitGone, scrollUntil };
 })(typeof window !== 'undefined' ? window : globalThis);

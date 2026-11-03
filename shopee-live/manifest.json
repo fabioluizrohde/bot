@@ -12,6 +12,7 @@
         "src/lib/catalog.js",
         "src/lib/selector.js",
         "src/lib/dom.js",
+        "src/lib/selectors.js",
         "src/content.js"
       ],
       "run_at": "document_idle"
