@@ -1,78 +1,93 @@
 # Assistente de Live Shopee (extensão de navegador)
 
-Painel flutuante que aparece sobre a página da live na Shopee Brasil (`*.shopee.com.br`) e ajuda o apresentador a:
+Versão 0.2.0. Ajuda quem apresenta lives da Shopee Brasil a transformar **IDs de produto pedidos no chat** (como `CLH-NZK-QPT`) em produtos na sacola da live, sem digitar nada.
 
-- **Ler o chat** e listar os códigos de produto que os clientes pedem ("#5", "quero o 12", "cod 3", "4"…), com contagem e nome de quem pediu.
-- **Adicionar à sacola**: com um clique ou de forma **automática**, repetindo um caminho que você grava uma vez.
-- **Destacar** o produto da vez com um clique, pelo código ou com os atalhos **Alt+↓ / Alt+↑** (próximo/anterior).
+## O que ela faz hoje: Pedidos por ID em lote
+
+1. Você seleciona um trecho do chat da live e a extensão lista os IDs que achou.
+2. Ela abre a Shopee e, a cada ID, cola o número na busca, abre o produto e o coloca nos seus Favoritos.
+3. De volta à live, ela marca esses produtos na tela "Adicionar Produtos" (aba Meus Favoritos).
+4. **Você confere e clica em Confirmar.** A extensão não faz essa parte.
+
+O **painel da sacola** (lista numerada dos produtos e troca rápida do produto no ar) **ainda não está incluído**. É o próximo recurso.
+
+## Primeiro teste na live real (obrigatório antes de usar)
+
+Alguns textos e seletores da página da Shopee foram escolhidos por palpite e precisam ser confirmados uma vez na página real. Eles estão marcados com `PROBE-PENDING` em `src/lib/selectors.js` (seis no total):
+
+- a caixa de busca da página inicial da Shopee;
+- o botão Favoritar (texto sob as fotos do produto);
+- a marca do coração cheio (produto já favoritado);
+- o nome do produto no card da grade de Favoritos;
+- o quadradinho (checkbox) do card;
+- o aviso de verificação/captcha.
+
+Roteiro, com uma live de teste:
+
+1. **Teste primeiro com um produto que JÁ está favoritado.** Se a extensão errar o coração cheio, ela poderia desfavoritar sem você esperar. Com um produto já favoritado, o erro aparece sem estrago.
+2. Monte um lote de 3 IDs: um que não existe, um já favoritado e um novo. Clique em **Processar lote** e siga a Shopee uma vez por ID.
+3. De volta à live, clique em **Marcar na live** e **PARE antes de apertar Confirmar**. Confira se os produtos certos foram marcados e se os status fazem sentido (inexistente = "não achei", já favoritado = "já estava favoritado", novo = "favoritado").
+4. Confirme que o painel aparece em `live.shopee.com.br/pc/live`, inclusive depois de navegar dentro do site (por exemplo, sair da live e voltar). Se ele sumir, recarregue a página e anote o que fez antes.
+5. Se algo divergir, ajuste o seletor (veja "Se a Shopee mudar o layout") e repita o teste.
 
 ## Instalação (Chrome, Edge ou Brave)
 
-1. Abra `chrome://extensions`.
-2. Ligue o **Modo do desenvolvedor**.
-3. Clique em **Carregar sem compactação** e escolha a pasta `shopee-live`.
-4. Abra a página da sua live na Shopee. O painel laranja aparece no canto direito. **Alt+Shift+L** mostra e esconde o painel, e dá para arrastar pelo título.
+1. Abra `chrome://extensions` (no Edge, `edge://extensions`).
+2. Ligue o **Modo do desenvolvedor** (canto superior direito).
+3. Clique em **Carregar sem compactação** e escolha a pasta `shopee-live` deste projeto.
+4. Abra a página da sua live (`live.shopee.com.br/pc/live...`). O painel **Assistente de Live** aparece sobre a página e pode ser arrastado.
 
-## Configuração (uma vez só)
+Depois de mudar qualquer arquivo da extensão, clique em **Recarregar** no card dela em `chrome://extensions` e recarregue a página da live.
 
-Como a Shopee muda o layout com frequência, a extensão não depende de nomes fixos da página: você ensina onde fica cada coisa, na aba **Config**.
+## Como usar, passo a passo
 
-1. **Chat**: clique em *Ensinar* e depois numa mensagem qualquer do chat. Precisa haver pelo menos 2 mensagens na tela. A bolinha verde no título indica que o chat está sendo lido.
-2. **Lista da sacola**: clique em *Ensinar* e depois num produto da sacola. Precisa haver pelo menos 2 produtos.
-3. **Botão destacar**: clique em *Ensinar* e depois no botão de destacar/fixar de um produto. Enquanto você ensina, o clique **não** chega na Shopee.
-4. **Gravar "adicionar à sacola"**: escreva o nome de um produto de exemplo, clique em **● Gravar** e faça na página o caminho completo: abrir "adicionar produto", clicar na busca, digitar o nome, marcar o produto nos resultados e confirmar. Depois clique em **■ Parar**. O texto digitado vira a variável `{busca}`, e o clique no resultado passa a escolher a linha do produto pedido.
-5. Em **Testar fluxo**, digite um código do catálogo para conferir se funciona.
+1. Na live, **selecione com o mouse** o trecho do chat com os pedidos. Os IDs aparecem em "IDs encontrados no chat". Para tirar algum da lista, clique no ✕ ao lado dele.
+2. Clique em **Processar lote**. A Shopee abre numa aba nova (ou numa janela, veja Configuração).
+3. Na Shopee aparece um aviso "ID k de N: clique na busca". **Clique uma vez na caixa de busca da Shopee** para cada ID. A extensão cola o ID, abre o produto e favorita. O clique é seu de propósito: mantém um ritmo humano e reduz o risco de a Shopee pedir verificação.
+4. Quando o último ID termina, a Shopee se fecha sozinha e você volta para a aba da live.
+5. No painel, clique em **Marcar na live**. A extensão abre a tela de Adicionar Produtos, vai em Meus Favoritos e marca cada produto do lote pelo nome.
+6. **Confira os produtos marcados e clique você mesmo em Confirmar**, na tela da Shopee. Depois disso os itens ficam como "adicionado".
 
-Em *Backup da configuração* dá para exportar e importar tudo (seletores, fluxo e catálogo) para usar em outro computador.
+Se você fechar a aba da Shopee no meio, o lote fica guardado. Use o botão **Retomar** no painel. Se a Shopee pedir verificação (captcha), resolva e clique em **Continuar** no aviso.
 
-## Catálogo da live
+## Configuração
 
-Na aba **Catálogo**, cole as linhas no formato `codigo;nome;busca` (também aceita `,` ou TAB):
+Na aba **Config** do painel: **Abrir a Shopee em** aba (padrão) ou janela separada. A escolha fica salva.
 
-```
-codigo;nome;busca
-1;Camiseta Dry Fit Preta;
-2;Caneca Térmica 500ml;
-5;Garrafa Squeeze 1L;23456789012
-```
+## O que a extensão nunca faz sozinha
 
-- **codigo**: o que o cliente digita no chat.
-- **nome**: usado para achar o produto na sacola e nos resultados da busca.
-- **busca** (opcional): o que digitar na pesquisa de "adicionar produto", como o ID do anúncio. Se ficar vazio, usa o nome.
+- Nunca clica em **Confirmar**, **Remover** nem **Mostrar**. Essas decisões são sempre suas.
+- Não responde no chat e não mexe em cupons.
+- Não desfavorita produtos de lotes antigos.
 
-Se a sacola já estiver montada, **Gerar da sacola** numera os produtos visíveis (1, 2, 3…).
+## O que cada status quer dizer
 
-## Durante a live
-
-- Aba **Pedidos**: cada código aparece com o status *novo*, *na fila*, *adicionando…*, *na sacola*, *fora do catálogo* ou *erro*. Use **+ Sacola** para adicionar, **★** para destacar e **✕** para ignorar.
-- **Adicionar automático**: quando ligado, todo código do catálogo que chegar no chat entra sozinho na fila. Em *Config* você define quantos pedidos são necessários antes de adicionar (padrão 1).
-- Aba **Sacola**: lista os produtos visíveis, com destaque por clique, *Anterior/Próximo* e destaque por código.
-- **Simular mensagem**: testa se uma frase seria reconhecida como pedido.
-
-### O que é reconhecido como pedido
-
-| Mensagem | Código |
+| Status | Significado |
 |---|---|
-| `#5`, `#3 e #5` | 5 / 3 e 5 |
-| `quero o 12`, `quero o 3 e o 7`, `manda o 4`, `reserva o #10` | 12 / 3, 7 / 4 / 10 |
-| `cod 45`, `código: A12`, `item 8`, `produto nº 9` | 45 / A12 / 8 / 9 |
-| `4`, `1, 3 e 5` (mensagem só com números; dá para desligar) | 4 / 1, 3, 5 |
-
-Números soltos no meio de frases ("frete de 22 reais", "tem no 42?") são ignorados. Em *Config* é possível ignorar códigos fora do catálogo e adicionar uma regex própria, em que o grupo 1 é o código.
+| na fila | O ID ainda não foi processado. |
+| favoritado | O produto foi achado e colocado nos seus Favoritos. |
+| já estava favoritado | O produto já era favorito; a extensão não mexeu. |
+| não achei | O ID não abriu nenhum produto na Shopee. |
+| já estava na sacola | O produto já estava na sacola da live; não foi mexido. |
+| conferir à mão | A extensão não encontrou o produto na tela de Adicionar Produtos (talvez o nome tenha mudado). Procure e marque você mesmo. Os demais continuam marcados. |
+| adicionado | Você confirmou e o produto entrou na sacola. |
 
 ## Limitações
 
-- O fluxo gravado depende da tela da Shopee. Se ela mudar, grave de novo (leva menos de um minuto).
-- A sacola precisa estar aberta e visível para o destaque e para conferir o que já foi adicionado.
-- Se o chat ou a sacola da Shopee estiverem dentro de um *iframe*, a extensão não alcança. Nesse caso é preciso ajustar o `manifest.json` (`all_frames`).
-- A extensão só age na aba aberta e no seu login. Não há servidor nem dados enviados a terceiros, e tudo fica salvo no `chrome.storage` do navegador.
+- A página da live precisa estar aberta; a extensão lê o chat e a tela dessa página.
+- No chat, só as linhas visíveis na tela podem ser selecionadas.
+- Se a Shopee mudar o layout, os seletores podem parar de funcionar (veja abaixo).
+- O teste automático completo (e2e) precisa do Playwright e não roda por padrão.
+
+## Se a Shopee mudar o layout
+
+Todos os textos e seletores da página ficam **em um único arquivo**: `src/lib/selectors.js`. Se algum passo deixar de funcionar, ajuste o valor correspondente nesse arquivo (cada linha tem um comentário dizendo para que serve), recarregue a extensão em `chrome://extensions` e recarregue a live. As classes da Shopee têm um sufixo que muda; por isso os seletores usam só o começo do nome, como `[class*="comment-container"]`.
 
 ## Desenvolvimento
 
-```bash
-cd shopee-live
-npm test            # testes da leitura de códigos e do CSV
-npm run test:e2e    # carrega a extensão num Chromium (Playwright) contra test/mock-live.html
-```
+Dentro da pasta `shopee-live`:
 
-`test/mock-live.html` imita a página da live (chat, sacola, modal de adicionar e botão destacar) para validar o ensino, a gravação, a adição automática e o destaque sem precisar de uma live real.
+- `npm test`: testes rápidos (não precisam de navegador).
+- `npm run test:e2e`: teste completo com páginas de mentira (`test/mock-live.html` e `test/mock-shopee.html`). Precisa do Playwright; indique onde ele está com a variável `PLAYWRIGHT_PATH`, por exemplo: `PLAYWRIGHT_PATH=C:\caminho\para\playwright npm run test:e2e`.
+
+Pastas principais: `src/background` (guarda o lote e abre/fecha a Shopee), `src/live` (painel e marcação na live), `src/shopee` (a "mão" que age na Shopee), `src/lib` (funções comuns e seletores).
