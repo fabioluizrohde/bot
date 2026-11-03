@@ -14,6 +14,30 @@
     return { status: card.checked ? 'ja_na_sacola' : 'marcado', card };
   }
 
+  // Mesmo nome de produto (sem acento/caixa/reticências)?
+  function sameName(a, b) {
+    const n = SLA.match.normalizeName;
+    const x = n(a);
+    return !!x && x === n(b);
+  }
+
+  // Junta o que foi visto agora (snapshot) ao já coletado, por NOME. Cards com o mesmo nome no mesmo
+  // snapshot são produtos distintos e continuam contando (para a ambiguidade ser detectada).
+  function mergeCards(coletados, snapshot) {
+    const out = coletados.slice();
+    const porNome = new Map();
+    for (const c of snapshot) {
+      const k = SLA.match.normalizeName(c.name);
+      porNome.set(k, (porNome.get(k) || 0) + 1);
+    }
+    for (const [k, qtd] of porNome) {
+      const tem = out.filter((c) => SLA.match.normalizeName(c.name) === k).length;
+      const novos = snapshot.filter((c) => SLA.match.normalizeName(c.name) === k);
+      for (let i = tem; i < qtd; i++) out.push(novos[i]);
+    }
+    return out;
+  }
+
   // O texto do botão clicado é exatamente o do "Confirmar"?
   function isConfirmText(txt, confirmText) {
     return String(txt == null ? '' : txt).trim().toLowerCase() === String(confirmText).trim().toLowerCase();
@@ -101,40 +125,50 @@
     const modal = await openFavorites();
     const scroller = findScroller(modal);
 
-    // Uma passada pela grade inteira, juntando os cards (sem repetir).
+    // Uma passada pela grade inteira, juntando os cards por NOME (nó do DOM pode ser reciclado).
     scroller.scrollTop = 0;
-    const vistos = new Set();
-    const todos = [];
+    let todos = [];
     const coleta = () => {
-      for (const c of collectCards(modal)) {
-        if (!vistos.has(c.checkbox)) { vistos.add(c.checkbox); todos.push(c); }
-      }
+      todos = mergeCards(todos, collectCards(modal));
       return false; // continua rolando até o fim
     };
     coleta();
     await d.scrollUntil(scroller, coleta);
     coleta();
 
+    // Nome ATUAL do card daquele checkbox (null se o nó saiu da grade).
+    const atual = (cb) => collectCards(modal).find((c) => c.checkbox === cb) || null;
+
+    // Espera a caixinha ficar marcada por até ~1,5 s.
+    const marcou = async (cb) => !!(await d.waitFor(() => cb.checked, 1500, 100));
+
     const results = [];
     for (const it of items) {
       const { status, card } = decide(it.name, todos);
-      if (status !== 'marcado') { results.push({ id: it.id, status }); continue; }
-      let cb = card.checkbox;
-      if (!cb.isConnected) { // lista virtual reciclou o card: acha de novo pelo nome
+      if (status === 'conferir') { results.push({ id: it.id, status }); continue; }
+      // Só age num card cujo nome ATUAL foi reconfirmado (lista virtual pode reciclar os nós).
+      let cur = atual(card.checkbox);
+      if (!(cur && sameName(cur.name, card.name))) {
         scroller.scrollTop = 0;
-        const achado = () => collectCards(modal).find((c) => c.name === card.name);
-        if (!(await d.scrollUntil(scroller, () => !!achado()))) { results.push({ id: it.id, status: 'conferir' }); continue; }
-        cb = achado().checkbox;
-        if (cb.checked) { results.push({ id: it.id, status: 'ja_na_sacola' }); continue; }
+        const achados = () => collectCards(modal).filter((c) => sameName(c.name, card.name));
+        if (!(await d.scrollUntil(scroller, () => achados().length > 0)) || achados().length !== 1) {
+          results.push({ id: it.id, status: 'conferir' });
+          continue;
+        }
+        cur = achados()[0];
       }
+      const cb = cur.checkbox;
+      if (cb.checked) { results.push({ id: it.id, status: 'ja_na_sacola' }); continue; }
       d.realClick(cb);
-      await d.sleep(200);
-      if (!cb.checked) { // às vezes só o rótulo/contêiner responde
-        const alvo = cb.closest('label') || cb.parentElement;
-        if (alvo) d.realClick(alvo);
-        await d.sleep(200);
+      let ok = await marcou(cb);
+      if (!ok) { // às vezes só o rótulo responde: tenta UMA vez, só no label do próprio checkbox
+        const label = cb.closest('label');
+        if (label) {
+          d.realClick(label);
+          ok = await marcou(cb);
+        }
       }
-      results.push({ id: it.id, status: cb.checked ? 'marcado' : 'conferir' });
+      results.push({ id: it.id, status: ok ? 'marcado' : 'conferir' });
     }
     return results;
   }
@@ -163,6 +197,6 @@
     return parar;
   }
 
-  SLA.addProducts = { decide, isConfirmText, markFavorites, watchConfirm };
+  SLA.addProducts = { decide, sameName, mergeCards, isConfirmText, markFavorites, watchConfirm };
   if (typeof module !== 'undefined' && module.exports) module.exports = SLA.addProducts;
 })(typeof window !== 'undefined' ? window : globalThis);
