@@ -207,6 +207,14 @@
     button.pri{background:#ee4d2d;color:#fff;border:0;border-radius:4px}
     button:disabled{opacity:.5;cursor:default}
     label{display:block;margin:4px 0}
+    .busca{box-sizing:border-box;width:100%;margin:6px 0;padding:4px 6px;font:inherit}
+    .cartao{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid #eee}
+    .cartao .num{font-size:20px;font-weight:bold;min-width:32px;text-align:center;color:#ee4d2d}
+    .cartao img{width:40px;height:40px;object-fit:cover;border-radius:4px}
+    .cartao .info{min-width:0}
+    .cartao .nome{overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+    .cartao .preco s{color:#999;margin-left:4px}
+    .apagado{opacity:.45}
   `;
 
   function draw() {
