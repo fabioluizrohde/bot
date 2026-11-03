@@ -146,3 +146,30 @@ test('findExtraAction: só chaves próprias (constructor/toString herdados não 
   assert.strictEqual(P.findExtraAction(tabs, 'hasOwnProperty'), null);
   assert.strictEqual(typeof P.findExtraAction(tabs, 'buscar'), 'function');
 });
+
+// ---------- Revisão final: Importante 1 e 2 ----------
+
+test('tabAfterMessage: batch:resolved leva para a aba Lote; outras mensagens não mudam a aba', () => {
+  assert.strictEqual(P.tabAfterMessage({ type: 'batch:resolved' }, 'sacola'), 'lote');
+  assert.strictEqual(P.tabAfterMessage({ type: 'batch:resolved' }, 'lote'), 'lote');
+  assert.strictEqual(P.tabAfterMessage({ type: 'batch:update' }, 'sacola'), 'sacola');
+  assert.strictEqual(P.tabAfterMessage(null, 'config'), 'config');
+});
+
+test('scrollToRestore: mesma aba devolve a rolagem; troca de aba volta ao topo', () => {
+  assert.strictEqual(P.scrollToRestore('sacola', 'sacola', 340), 340);
+  assert.strictEqual(P.scrollToRestore('sacola', 'lote', 340), 0);
+  assert.strictEqual(P.scrollToRestore(null, 'lote', 0), 0);
+  assert.strictEqual(P.scrollToRestore('sacola', 'sacola', undefined), 0);
+});
+
+test('refocus: devolve o foco sem rolar e recoloca o cursor', () => {
+  const chamadas = [];
+  const el = { focus: (o) => chamadas.push(['focus', o]), setSelectionRange: (a, b) => chamadas.push(['sel', a, b]) };
+  P.refocus(el, 2, 4);
+  assert.deepStrictEqual(chamadas, [['focus', { preventScroll: true }], ['sel', 2, 4]]);
+  const so = [];
+  P.refocus({ focus: (o) => so.push(o) }, null, null); // sem setSelectionRange e sem cursor
+  assert.deepStrictEqual(so, [{ preventScroll: true }]);
+  P.refocus(null, 1, 1); // sem elemento: não quebra
+});

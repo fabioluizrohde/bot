@@ -100,6 +100,24 @@
     return null;
   }
 
+  // Aba que deve ficar ativa depois de uma mensagem do coordenador. Com o lote pronto para
+  // marcar, a aba Lote aparece (é nela que surgem os pedidos de clique e os erros da marcação).
+  function tabAfterMessage(msg, tab) {
+    return msg && msg.type === 'batch:resolved' ? 'lote' : tab;
+  }
+
+  // Rolagem a devolver depois de redesenhar: na mesma aba, a de antes; ao trocar de aba, o topo.
+  function scrollToRestore(prevTab, curTab, savedTop) {
+    return prevTab === curTab && Number.isFinite(savedTop) ? savedTop : 0;
+  }
+
+  // Devolve o foco ao campo sem rolar a lista, e recoloca o cursor onde estava.
+  function refocus(el, selStart, selEnd) {
+    if (!el || typeof el.focus !== 'function') return;
+    el.focus({ preventScroll: true });
+    if (selStart != null && typeof el.setSelectionRange === 'function') el.setSelectionRange(selStart, selEnd);
+  }
+
   // ---------- Comportamento no navegador (sem teste automático) ----------
 
   // marcados: IDs que a extensão marcou e esperam o Confirmar; stopWatch: vigia do Confirmar ativa (ou null).
@@ -107,6 +125,7 @@
   const extraTabs = []; // {key, label, render, opts}
   const BUILTIN_ACTS = ['tab', 'rm', 'openIn', 'start', 'reopen', 'clear', 'mark'];
   let shadow = null;
+  let abaDesenhada = null; // aba do último draw(), para saber se a rolagem deve ser mantida
 
   const send = (msg) => chrome.runtime.sendMessage(msg);
 
@@ -139,7 +158,7 @@
     notifyActive(key, true);
   }
 
-  // Chama a ação de uma aba extra, se existir; erro dela é ignorado.
+  // Chama a ação de uma aba extra, se existir; erro dela é registrado no console e não quebra o painel.
   function runExtra(el, ev) {
     const act = el.dataset.act;
     const tab = extraTabs.find((t) => findExtraAction([t], act));
@@ -230,16 +249,18 @@
     shadow.querySelector('.tabs').innerHTML = tabs
       .map((t) => `<button data-act="tab" data-key="${esc(t.key)}" class="${t.key === state.tab ? 'on' : ''}">${esc(t.label)}</button>`)
       .join('');
-    shadow.querySelector('.body').innerHTML = cur.render();
+    // Guarda a rolagem da lista: a atualização automática não pode jogar a lista para o topo.
+    const body = shadow.querySelector('.body');
+    const topo = body ? body.scrollTop : 0;
+    if (body) body.innerHTML = cur.render();
     if (focusKey) {
       try {
         const novo = Array.from(shadow.querySelectorAll('[data-focus-key]')).find((e) => e.dataset.focusKey === focusKey);
-        if (novo) {
-          novo.focus();
-          if (selStart != null && typeof novo.setSelectionRange === 'function') novo.setSelectionRange(selStart, selEnd);
-        }
+        refocus(novo, selStart, selEnd);
       } catch (_) { /* ignora */ }
     }
+    if (body) body.scrollTop = scrollToRestore(abaDesenhada, state.tab, topo);
+    abaDesenhada = state.tab;
   }
 
   function stopWatching() {
@@ -363,6 +384,10 @@
     if (msg.type === 'batch:update') setBatch(msg.batch);
     else if (msg.type === 'batch:resolved') {
       setBatch(msg.batch);
+      // Mostra a aba Lote antes de marcar: o pedido de clique em "Produtos" e os erros
+      // aparecem nela (setTab também para a atualização da aba Sacola).
+      setTab(tabAfterMessage(msg, state.tab));
+      draw();
       markAll(); // marca sozinho; sem a Tarefa 8 só mostra o aviso
     }
   }
@@ -417,7 +442,7 @@
     draw();
   }
 
-  SLA.panel = { registerTab, redraw, isTabActive, findExtraAction, shouldMount, isInsideChat, filterOutBatch, mergeIds, removeId, statusLabel, viewState, normalizeResults, planMarkResults, init };
+  SLA.panel = { registerTab, redraw, isTabActive, findExtraAction, tabAfterMessage, scrollToRestore, refocus, shouldMount, isInsideChat, filterOutBatch, mergeIds, removeId, statusLabel, viewState, normalizeResults, planMarkResults, init };
   if (typeof module !== 'undefined' && module.exports) module.exports = SLA.panel;
 
   if (typeof document !== 'undefined' && typeof chrome !== 'undefined' && chrome.runtime) {
