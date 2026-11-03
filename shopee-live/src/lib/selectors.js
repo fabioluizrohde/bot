@@ -19,9 +19,11 @@
     // --- Palpites, a confirmar ---
     gridCardName: '[class*="name"]', // PROBE-PENDING: nome do produto no card da grade de favoritos
     gridCheckbox: 'input[type="checkbox"]', // PROBE-PENDING: checkbox do card (já na sacola vem marcado)
-    shopeeSearchInput: 'input.shopee-searchbar-input__input', // PROBE-PENDING: busca da home da Shopee
-    favoriteButton: 'Favoritar', // PROBE-PENDING: texto do botão sob as fotos ("Favoritar (N)")
-    favoriteFilledMark: '[class*="filled"], svg[fill="currentColor"]', // PROBE-PENDING: coração cheio (já favoritado)
+    shopeeSearchInput: 'input.shopee-searchbar-input__input', // conferido na página real em 2026-11-03: acha 1 campo na home
+    favoriteButton: 'Favoritar', // conferido em 2026-11-03: texto "Favoritar (N)" dentro de um button; o rótulo não muda ao favoritar
+    // Coração cheio = path com fill vermelho; vazio = path com fill="none" (conferido na página real em 2026-11-03).
+    // "[class*=filled]" fica só para os mocks de teste.
+    favoriteFilledMark: 'svg path[fill="#FF424F"], [class*="filled"]',
     captchaMarker: 'iframe[src*="verify"], [class*="captcha"], [class*="verify"]', // PROBE-PENDING: verificação/captcha
   };
 })(typeof window !== 'undefined' ? window : globalThis);
