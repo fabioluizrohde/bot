@@ -66,11 +66,25 @@
     return Object.keys(res).map((id) => ({ id, status: res[id] }));
   }
 
+  // Separa o resultado da marcação: "marcado" não é status do lote (fica na memória até o Fabio
+  // confirmar); os demais só passam se forem status válidos do lote.
+  function planMarkResults(res) {
+    const validos = new Set(Object.values(SLA.batch.STATUS));
+    const marcados = [];
+    const updates = [];
+    for (const r of normalizeResults(res)) {
+      if (r.status === 'marcado') marcados.push(r.id);
+      else if (validos.has(r.status)) updates.push({ id: r.id, status: r.status });
+    }
+    return { marcados, updates };
+  }
+
   // ---------- Comportamento no navegador (sem teste automático) ----------
 
   const state = { ids: [], batch: null, openIn: 'tab', aviso: '', tab: 'lote', marcando: false };
   const extraTabs = []; // {key, label, render}
   let shadow = null;
+  let stopWatch = null;
 
   const send = (msg) => chrome.runtime.sendMessage(msg);
 
@@ -169,11 +183,26 @@
     state.aviso = '';
     draw();
     try {
-      const res = normalizeResults(await add.markFavorites(items));
-      for (const r of res) {
+      const { marcados, updates } = planMarkResults(await add.markFavorites(items));
+      for (const r of updates) {
         const nb = await send({ type: 'batch:setStatus', id: r.id, status: r.status });
         if (nb) state.batch = nb;
       }
+      if (marcados.length && add.watchConfirm) {
+        if (stopWatch) stopWatch();
+        // Quando o Fabio clicar em Confirmar na Shopee, os marcados viram "adicionado".
+        stopWatch = add.watchConfirm(async () => {
+          for (const id of marcados) {
+            try {
+              const nb = await send({ type: 'batch:setStatus', id, status: 'adicionado' });
+              if (nb) state.batch = nb;
+            } catch (_) { /* ignora */ }
+          }
+          state.aviso = '';
+          draw();
+        });
+      }
+      if (marcados.length) state.aviso = `${marcados.length} marcados — confira e clique em Confirmar`;
     } catch (e) {
       state.aviso = 'Não consegui marcar na live: ' + ((e && e.message) || e);
     } finally {
@@ -273,7 +302,7 @@
     draw();
   }
 
-  SLA.panel = { registerTab, shouldMount, isInsideChat, mergeIds, removeId, statusLabel, viewState, normalizeResults, init };
+  SLA.panel = { registerTab, shouldMount, isInsideChat, mergeIds, removeId, statusLabel, viewState, normalizeResults, planMarkResults, init };
   if (typeof module !== 'undefined' && module.exports) module.exports = SLA.panel;
 
   if (typeof document !== 'undefined' && typeof chrome !== 'undefined' && chrome.runtime) {

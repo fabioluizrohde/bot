@@ -96,7 +96,7 @@
           return b;
         case 'batch:setStatus': {
           if (!b) return null;
-          return saveBatch(B().setItem(b, msg.id, { status: msg.status }));
+          return saveBatch(B().advancePhase(B().setItem(b, msg.id, { status: msg.status })));
         }
         case 'batch:clear': {
           await storage.set('batch', null);

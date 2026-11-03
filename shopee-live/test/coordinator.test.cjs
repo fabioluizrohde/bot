@@ -133,3 +133,17 @@ test('novo coordenador com o mesmo storage recupera o lote', async () => {
   const c2 = createCoordinator(deps);
   assert.strictEqual((await c2.handle({ type: 'batch:get' })).items.length, 4);
 });
+
+test('batch:setStatus do último favoritado para adicionado leva o lote a done e avisa a live', async () => {
+  const { c, calls } = await started('tab', ['AAA', 'BBB']);
+  await c.handle({ type: 'hand:result', id: 'AAA', status: 'favoritado' });
+  await c.handle({ type: 'hand:result', id: 'BBB', status: 'favoritado' });
+  assert.strictEqual((await c.handle({ type: 'batch:get' })).phase, 'adding');
+  await c.handle({ type: 'batch:setStatus', id: 'AAA', status: 'adicionado' });
+  assert.strictEqual((await c.handle({ type: 'batch:get' })).phase, 'adding');
+  calls.send.length = 0;
+  const nb = await c.handle({ type: 'batch:setStatus', id: 'BBB', status: 'adicionado' });
+  assert.strictEqual(nb.phase, 'done');
+  assert.strictEqual((await c.handle({ type: 'batch:get' })).phase, 'done');
+  assert.ok(calls.send.some(([id, m]) => id === 10 && m.type === 'batch:update' && m.batch.phase === 'done'));
+});

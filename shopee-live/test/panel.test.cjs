@@ -62,3 +62,19 @@ test('normalizeResults: lista ou mapa', () => {
   assert.deepStrictEqual(P.normalizeResults({ A: 'conferir' }), [{ id: 'A', status: 'conferir' }]);
   assert.deepStrictEqual(P.normalizeResults(null), []);
 });
+
+test('planMarkResults: marcado só vai para a memória; ja_na_sacola e conferir viram status; resto é ignorado', () => {
+  const r = P.planMarkResults([
+    { id: 'A', status: 'marcado' },
+    { id: 'B', status: 'ja_na_sacola' },
+    { id: 'C', status: 'conferir' },
+    { id: 'D', status: 'xpto' },
+    { id: 'E', status: 'adicionado' },
+  ]);
+  assert.deepStrictEqual(r.marcados, ['A']);
+  assert.deepStrictEqual(r.updates, [
+    { id: 'B', status: 'ja_na_sacola' },
+    { id: 'C', status: 'conferir' },
+    { id: 'E', status: 'adicionado' },
+  ]);
+});
