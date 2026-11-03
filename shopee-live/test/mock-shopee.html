@@ -1,0 +1,104 @@
+<!doctype html>
+<!-- Página falsa que imita shopee.com.br, só para testes automatizados. O e2e serve ESTE arquivo para qualquer
+     caminho de https://shopee.com.br/ e a página decide o que mostrar pelo location.pathname:
+       /                     home com a caixa de busca
+       /affiliation-i.1.<n>  página do produto (título "<nome> | Shopee Brasil", botão "Favoritar (N)" com coração liga/desliga)
+       /search?keyword=...   resultados: ID desconhecido NÃO navega (pushState + "Nenhum resultado"), como a busca real que não acha.
+     Favoritos compartilhados com a live (outra origem): o e2e expõe window.__favHas(nome) e window.__favToggle(nome)
+     (context.exposeFunction). Sem elas (página aberta sozinha), usa uma lista local em memória. -->
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Shopee Brasil</title>
+<style>
+  body { font-family: sans-serif; margin: 0; }
+  header { background: #ee4d2d; padding: 12px 20px; display: flex; gap: 12px; align-items: center; }
+  .shopee-searchbar-input__input { width: 420px; padding: 8px; font-size: 14px; }
+  main { padding: 20px; }
+  .actions_g7h8 { display: flex; gap: 12px; align-items: center; margin-top: 12px; }
+  .fav-btn_j2k3 { display: inline-flex; gap: 6px; align-items: center; padding: 8px 14px; cursor: pointer; background: #fff; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+  .heart { width: 18px; height: 18px; color: #ee4d2d; }
+</style>
+</head>
+<body>
+<header>
+  <b style="color:#fff">Shopee</b>
+  <!-- Fora do .actions_g7h8: o coração da busca não pode contar como "cheio" do produto -->
+  <input class="shopee-searchbar-input__input" id="busca" placeholder="Buscar produtos" autocomplete="off">
+</header>
+<main id="conteudo"></main>
+
+<script>
+  // ID do anúncio -> produto. Os nomes batem com os dos favoritos que o e2e semeia na live.
+  const CATALOGO = {
+    'CLH-NZK-QPT': { n: 1, nome: 'Caneca Térmica Inox 500ml Azul Premium' },
+    'ANJ-EGH-KLV': { n: 2, nome: 'Garrafa Squeeze 1L Preta com Tampa Rosqueável' },
+  };
+  const localFavs = new Set();
+  const favHas = (nome) => (typeof window.__favHas === 'function' ? window.__favHas(nome) : Promise.resolve(localFavs.has(nome)));
+  const favToggle = (nome) => {
+    if (typeof window.__favToggle === 'function') return window.__favToggle(nome);
+    localFavs.has(nome) ? localFavs.delete(nome) : localFavs.add(nome);
+    return Promise.resolve(localFavs.has(nome));
+  };
+
+  const conteudo = document.getElementById('conteudo');
+  const busca = document.getElementById('busca');
+
+  const HEART_VAZIO = '<svg class="heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-4.6-9.3-9A5.3 5.3 0 0 1 12 6.5 5.3 5.3 0 0 1 21.3 12C19 16.4 12 21 12 21z"/></svg>';
+  const HEART_CHEIO = '<svg class="heart filled" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.6-9.3-9A5.3 5.3 0 0 1 12 6.5 5.3 5.3 0 0 1 21.3 12C19 16.4 12 21 12 21z"/></svg>';
+
+  function mostraHome() {
+    document.title = 'Shopee Brasil';
+    conteudo.innerHTML = '<h3>Ofertas do dia</h3><p>Home da Shopee (mock).</p>';
+  }
+
+  function mostraSemResultado(termo) {
+    document.title = 'Busca: ' + termo + ' | Shopee Brasil';
+    conteudo.textContent = '';
+    const h = document.createElement('h3');
+    h.textContent = 'Nenhum resultado encontrado para "' + termo + '"';
+    conteudo.appendChild(h);
+  }
+
+  async function mostraProduto(prod) {
+    document.title = prod.nome + ' | Shopee Brasil';
+    const cheio = await favHas(prod.nome); // só desenha o botão quando o estado do coração já é conhecido
+    conteudo.innerHTML = '<h2></h2><div class="actions_g7h8"></div>';
+    conteudo.querySelector('h2').textContent = prod.nome;
+    const caixa = conteudo.querySelector('.actions_g7h8');
+    const btn = document.createElement('button');
+    btn.className = 'fav-btn_j2k3';
+    btn.innerHTML = (cheio ? HEART_CHEIO : HEART_VAZIO) + '<span>Favoritar (' + (120 + (cheio ? 1 : 0)) + ')</span>';
+    btn.addEventListener('click', async () => {
+      await favToggle(prod.nome); // liga/desliga: o coração alterna
+      mostraProduto(prod);
+    });
+    caixa.appendChild(btn);
+  }
+
+  function rota() {
+    const m = location.pathname.match(/^\/affiliation-i\.1\.(\d+)/);
+    if (m) {
+      const prod = Object.values(CATALOGO).find((p) => String(p.n) === m[1]);
+      if (prod) return mostraProduto(prod);
+    }
+    if (location.pathname === '/search') return mostraSemResultado(new URLSearchParams(location.search).get('keyword') || '');
+    mostraHome();
+  }
+
+  busca.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const termo = busca.value.trim();
+    const prod = CATALOGO[termo.toUpperCase()];
+    if (prod) location.assign('/affiliation-i.1.' + prod.n); // navegação completa, como a busca real redirecionando
+    else {
+      history.pushState({}, '', '/search?keyword=' + encodeURIComponent(termo)); // continua na mesma página
+      mostraSemResultado(termo);
+    }
+  });
+
+  rota();
+</script>
+</body>
+</html>

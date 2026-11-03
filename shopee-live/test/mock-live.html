@@ -1,93 +1,180 @@
 <!doctype html>
-<!-- Página falsa que imita o painel de live da Shopee, só para testes automatizados. -->
+<!-- Página falsa que imita a live da Shopee (live.shopee.com.br/pc/live) no formato REAL, só para testes automatizados.
+     Classes com sufixo "hash" (ex.: comment-content_x1y2z): o código da extensão só pode usar PREFIXO de classe.
+     Favoritos: vêm de window.__favGet() (o e2e expõe essa função com page/context.exposeFunction, assim a mesma
+     lista é compartilhada com o mock da Shopee, que está em OUTRA origem; localStorage não serviria). Aberta
+     sozinha no navegador, a página usa a lista de demonstração DEMO_FAVS. -->
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
 <title>Mock Shopee Live</title>
 <style>
-  body { font-family: sans-serif; margin: 0; display: flex; gap: 20px; padding: 20px; }
-  .x7Chat { width: 300px; height: 400px; overflow: auto; border: 1px solid #ccc; }
-  .k2Msg { padding: 4px; border-bottom: 1px solid #eee; }
-  .k2Msg .u { font-weight: bold; display: block; }
-  .q9Bag { width: 380px; }
-  .q9Item { display: flex; gap: 8px; align-items: center; padding: 6px; border: 1px solid #ddd; margin: 4px 0; }
-  .q9Item.pinned { background: #ffe; }
-  .mdl { position: fixed; top: 60px; left: 340px; background: #fff; border: 2px solid #333; padding: 12px; width: 320px; }
-  .mdl[hidden] { display: none; }
-  .res { display: flex; gap: 6px; padding: 4px; }
+  body { font-family: sans-serif; margin: 0; display: flex; gap: 24px; padding: 20px; }
+  .comment-content_x1y2z { width: 320px; height: 320px; overflow-y: auto; border: 1px solid #ccc; position: relative; }
+  .comment-list_q8w7e { position: relative; }
+  .comment-container_k3m9p { position: absolute; left: 0; right: 0; height: 40px; box-sizing: border-box; padding: 4px 8px; border-bottom: 1px solid #eee; overflow: hidden; }
+  .nickname_a1b2c { font-weight: bold; margin-right: 6px; }
+  .tools_r5t6y { width: 220px; position: relative; }
+  .tool-tile_u7i8o { display: inline-block; width: 90px; padding: 12px 0; margin: 4px; text-align: center; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; user-select: none; }
+  .popover_p0o9i { display: none; position: absolute; top: 90px; left: 0; background: #fff; border: 1px solid #aaa; padding: 8px; width: 200px; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+  .popover_p0o9i.aberto { display: block; }
+  .shopee-react-modal { display: none; position: fixed; background: #fff; border: 2px solid #333; padding: 12px; box-sizing: border-box; }
+  .shopee-react-modal.aberto { display: block; }
+  #modalLista { top: 40px; left: 280px; width: 620px; z-index: 10; }
+  #modalAdd { top: 90px; left: 330px; width: 560px; z-index: 20; }
+  .shopee-react-table { width: 100%; border-collapse: collapse; }
+  .shopee-react-table__row td { border-bottom: 1px solid #eee; padding: 4px; font-size: 13px; }
+  .tabs_m4n5b { display: flex; gap: 12px; border-bottom: 1px solid #ddd; margin-bottom: 8px; }
+  .tab_v6c7x { padding: 6px 4px; cursor: pointer; }
+  .tab_v6c7x.on { border-bottom: 2px solid #ee4d2d; font-weight: bold; }
+  .grid-scroll_z1x2c { height: 300px; overflow-y: auto; border: 1px solid #eee; margin-top: 8px; }
+  .grid_l9k8j { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 8px; }
+  .card_h7g6f { display: block; border: 1px solid #ddd; border-radius: 6px; padding: 6px; height: 96px; box-sizing: border-box; cursor: pointer; }
+  .card_h7g6f .name_d5s4a { margin-top: 6px; font-size: 12px; }
+  .foot_w3e2q { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
 </style>
 </head>
 <body>
-  <section><h3>Chat</h3><div class="x7Chat" id="chat"></div></section>
-  <section class="q9Bag">
-    <h3>Sacola <button class="btnAdd" id="openAdd">Adicionar produtos</button></h3>
-    <div class="q9List" id="bag"></div>
-    <p>Em destaque: <b id="pinned">nenhum</b></p>
-  </section>
-  <div class="mdl" id="modal" hidden>
-    <input class="srch" placeholder="Buscar por nome ou ID">
-    <div class="results" id="results"></div>
-    <button class="ok" id="confirm">Confirmar</button>
-    <button class="cancel" id="cancel">Cancelar</button>
+<!-- Chat "virtualizado": só as linhas da janela visível existem no DOM, posicionadas por "top". -->
+<div class="comment-content_x1y2z" id="chat"><div class="comment-list_q8w7e" id="chatList"></div></div>
+
+<!-- Coluna Ferramentas -->
+<div class="tools_r5t6y">
+  <h4>Ferramentas</h4>
+  <div class="tool-tile_u7i8o" id="tilePedidos">Pedidos</div>
+  <div class="tool-tile_u7i8o" id="tileProdutos">Produtos</div>
+  <div class="popover_p0o9i" id="popover">
+    <button id="btnLista">Lista de produtos</button>
+    <div style="margin-top:6px"><button id="btnOutra">Outra opção</button></div>
   </div>
+</div>
+
+<!-- Modal "Produtos (N)" -->
+<div class="shopee-react-modal" id="modalLista">
+  <div><b id="tituloLista">Produtos (3)</b> <button id="fechaLista" style="float:right">✕</button></div>
+  <button id="btnAddRel" style="margin:8px 0">Adicionar produtos relacionados</button>
+  <table class="shopee-react-table"><tbody>
+    <tr class="shopee-react-table__row"><td>1</td><td>Camiseta Dry Fit Preta Masculina Esportiva</td><td>R$ 39,90</td>
+      <td><button>Remover</button> <button>Mover para cima</button> <button>Mostrar</button></td></tr>
+    <tr class="shopee-react-table__row"><td>2</td><td>Mochila Impermeável 30L Cinza</td><td>R$ 89,90</td>
+      <td><button>Remover</button> <button>Mover para cima</button> <button>Mostrar</button></td></tr>
+    <tr class="shopee-react-table__row"><td>3</td><td>Fone Bluetooth Sem Fio com Case</td><td>R$ 59,90</td>
+      <td><button>Remover</button> <button>Mover para cima</button> <button>Mostrar</button></td></tr>
+  </tbody></table>
+</div>
+
+<!-- Modal "Adicionar Produtos" -->
+<div class="shopee-react-modal" id="modalAdd">
+  <div><b>Adicionar Produtos</b></div>
+  <div class="tabs_m4n5b" id="abas">
+    <div class="tab_v6c7x" data-tab="fav" tabindex="0">Meus Favoritos</div>
+    <div class="tab_v6c7x on" data-tab="loja" tabindex="0">Minha Loja</div>
+    <div class="tab_v6c7x" data-tab="rec" tabindex="0">Recente</div>
+    <div class="tab_v6c7x" data-tab="conj" tabindex="0">Adicionar conjunto de produtos</div>
+    <div class="tab_v6c7x" data-tab="url" tabindex="0">Importar via URL</div>
+  </div>
+  <input type="text" id="busca" placeholder="Pesquisar produto" style="width:100%;box-sizing:border-box">
+  <div id="painelOutras">Conteúdo desta aba não é usado nos testes.</div>
+  <div class="grid-scroll_z1x2c" id="scrollFav" style="display:none"><div class="grid_l9k8j" id="grade"></div></div>
+  <div class="foot_w3e2q"><button id="btnCancelar">Cancelar</button><button id="btnConfirmar">Confirmar</button></div>
+</div>
+
 <script>
-  const inventory = [
-    { id: '1001', name: 'Camiseta Dry Fit Preta' },
-    { id: '1002', name: 'Caneca Térmica 500ml' },
-    { id: '1003', name: 'Boné Aba Curva' },
-    { id: '1004', name: 'Meia Cano Alto Kit 3' },
-    { id: '1005', name: 'Garrafa Squeeze 1L' },
+  window.__confirmClicks = 0;
+
+  // ---- Chat ----
+  const MSGS = [
+    ['lucas', 'boa noite pessoal!'],
+    ['bia', 'quero esse ANJ-EGH-KLV por favor'],
+    ['carlos', 'tem o ZZZ-YYY-XXX ainda?'],
+    ['duda', 'adiciona CLH-NZK-QPT pra mim'],
+    ['ana', 'eu também quero o CLH-NZK-QPT'],
+    ['pedro', 'qual o frete?'],
+    ['maria', 'lindo demais'],
+    ['joao', 'chegou rápido o último'],
+    ['rita', 'mostra de novo'],
+    ['caio', 'tem desconto?'],
+    ['sol', 'amei'],
+    ['leo', 'quanto tempo de live?'],
   ];
-  const bag = [inventory[0], inventory[2]];
-  const added = [];
-  const $ = (s) => document.querySelector(s);
-
-  function renderBag() {
-    $('#bag').innerHTML = '';
-    bag.forEach((p, i) => {
-      const row = document.createElement('div');
-      row.className = 'q9Item';
-      row.innerHTML = `<span class="n">#${i + 1}</span><div class="info"><p class="t">${p.name}</p><p>R$ 49,90</p></div><button class="pinBtn">Destacar</button>`;
-      row.querySelector('button').addEventListener('click', () => {
-        document.querySelectorAll('.q9Item').forEach((r) => r.classList.remove('pinned'));
-        row.classList.add('pinned');
-        $('#pinned').textContent = p.name;
-      });
-      $('#bag').appendChild(row);
+  const ROW = 40, JANELA = 9;
+  const chat = document.getElementById('chat');
+  const lista = document.getElementById('chatList');
+  function desenhaChat() {
+    lista.style.height = MSGS.length * ROW + 'px';
+    const ini = Math.max(0, Math.floor(chat.scrollTop / ROW) - 1);
+    const fim = Math.min(MSGS.length, ini + JANELA);
+    const html = [];
+    for (let i = ini; i < fim; i++) {
+      html.push('<div class="comment-container_k3m9p" style="top:' + i * ROW + 'px"><span class="nickname_a1b2c"></span><span class="message-content_z9y8x"></span></div>');
+    }
+    lista.innerHTML = html.join('');
+    [...lista.children].forEach((row, k) => {
+      row.children[0].textContent = MSGS[ini + k][0];
+      row.children[1].textContent = MSGS[ini + k][1];
     });
   }
+  chat.addEventListener('scroll', desenhaChat);
+  desenhaChat();
 
-  window.postChat = (user, text) => {
-    const m = document.createElement('div');
-    m.className = 'k2Msg';
-    m.innerHTML = `<span class="u"></span><span class="t"></span>`;
-    m.children[0].textContent = user;
-    m.children[1].textContent = text;
-    $('#chat').appendChild(m);
-  };
+  // ---- Produtos: o bloco alterna o popover a cada clique ----
+  const popover = document.getElementById('popover');
+  document.getElementById('tileProdutos').addEventListener('click', () => popover.classList.toggle('aberto'));
+  const modalLista = document.getElementById('modalLista');
+  const modalAdd = document.getElementById('modalAdd');
+  document.getElementById('btnLista').addEventListener('click', () => modalLista.classList.add('aberto'));
+  document.getElementById('fechaLista').addEventListener('click', () => modalLista.classList.remove('aberto'));
+  document.getElementById('btnAddRel').addEventListener('click', () => modalAdd.classList.add('aberto'));
 
-  $('#openAdd').addEventListener('click', () => { $('#modal').hidden = false; $('.srch').value = ''; renderResults(''); });
-  $('#cancel').addEventListener('click', () => { $('#modal').hidden = true; });
-  $('.srch').addEventListener('input', (e) => setTimeout(() => renderResults(e.target.value), 200)); // busca com atraso
-  function renderResults(q) {
-    const nq = q.toLowerCase();
-    const list = q ? inventory.filter((p) => p.name.toLowerCase().includes(nq) || p.id === q) : [];
-    $('#results').innerHTML = list
-      .map((p) => `<label class="res"><input type="checkbox" value="${p.id}"><span>${p.name}</span><small>ID ${p.id}</small></label>`)
-      .join('');
+  // ---- Adicionar Produtos ----
+  const DEMO_FAVS = [
+    { name: 'Camiseta Dry Fit Preta Masculina Esportiva', inBag: true },
+    { name: 'Garrafa Squeeze 1L Preta com Tampa Rosqueável', inBag: false },
+    { name: 'Boné Aba Curva Preto Ajustável Unissex', inBag: false },
+  ];
+  const trunca = (s) => (s.length > 28 ? s.slice(0, 28).trimEnd() + '…' : s);
+  const grade = document.getElementById('grade');
+  const scrollFav = document.getElementById('scrollFav');
+  const painelOutras = document.getElementById('painelOutras');
+  const busca = document.getElementById('busca');
+  let favs = [];
+
+  function desenhaGrade() {
+    const q = busca.value.trim().toLowerCase();
+    grade.innerHTML = '';
+    for (const f of favs) {
+      if (q && !f.name.toLowerCase().includes(q)) continue;
+      const card = document.createElement('label');
+      card.className = 'card_h7g6f';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = !!f.inBag;
+      const nome = document.createElement('div');
+      nome.className = 'name_d5s4a';
+      nome.textContent = trunca(f.name); // a página real corta o nome com reticências
+      card.append(cb, nome);
+      grade.appendChild(card);
+    }
   }
-  $('#confirm').addEventListener('click', () => {
-    document.querySelectorAll('#results input:checked').forEach((cb) => {
-      const p = inventory.find((x) => x.id === cb.value);
-      if (!bag.includes(p)) { bag.push(p); added.push(p.name); }
-    });
-    $('#modal').hidden = true;
-    renderBag();
+  busca.addEventListener('input', desenhaGrade);
+
+  async function abreAba(chave) {
+    document.querySelectorAll('#abas .tab_v6c7x').forEach((t) => t.classList.toggle('on', t.dataset.tab === chave));
+    const fav = chave === 'fav';
+    scrollFav.style.display = fav ? 'block' : 'none';
+    painelOutras.style.display = fav ? 'none' : 'block';
+    if (fav) {
+      favs = typeof window.__favGet === 'function' ? await window.__favGet() : DEMO_FAVS;
+      desenhaGrade();
+    }
+  }
+  document.querySelectorAll('#abas .tab_v6c7x').forEach((t) => t.addEventListener('click', () => abreAba(t.dataset.tab)));
+
+  document.getElementById('btnCancelar').addEventListener('click', () => modalAdd.classList.remove('aberto'));
+  document.getElementById('btnConfirmar').addEventListener('click', () => {
+    window.__confirmClicks++; // a extensão NUNCA deve clicar aqui
+    modalAdd.classList.remove('aberto');
   });
-  window.__added = added;
-  renderBag();
-  postChat('loja_oficial', 'Bem-vindos à live!');
-  postChat('ana', 'boa noite');
 </script>
 </body>
 </html>

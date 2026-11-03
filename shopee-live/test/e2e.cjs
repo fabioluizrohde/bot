@@ -1,13 +1,41 @@
-// Teste ponta a ponta: carrega a extensão num Chromium real e usa a página falsa
-// test/mock-live.html servida como se fosse https://seller.shopee.com.br/live
+// Teste ponta a ponta do lote por ID: carrega a extensão num Chromium real, serve os mocks
+// (test/mock-live.html e test/mock-shopee.html) como se fossem live.shopee.com.br e shopee.com.br e
+// percorre: selecionar texto do chat -> Processar lote -> 3 cliques na busca -> aba da Shopee fecha ->
+// a live marca os favoritos. Rodar: PLAYWRIGHT_PATH=<caminho do playwright> npm run test:e2e
+//
+// Favoritos compartilhados: live e Shopee são origens diferentes (localStorage não é compartilhado), então a
+// lista fica AQUI, em memória, e é exposta às duas páginas com context.exposeFunction
+// (__favGet / __favHas / __favToggle). Assim o que se favorita na Shopee aparece na grade da live.
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const assert = require('assert');
-const { chromium } = require(process.env.PLAYWRIGHT_PATH || 'playwright');
+
+let chromium;
+try {
+  ({ chromium } = require(process.env.PLAYWRIGHT_PATH || 'playwright'));
+} catch (_) {
+  console.log('Playwright não encontrado: e2e escrito, não executado');
+  process.exit(0);
+}
 
 const EXT = path.resolve(__dirname, '..');
-const MOCK = fs.readFileSync(path.join(__dirname, 'mock-live.html'), 'utf8');
+const MOCK_LIVE = fs.readFileSync(path.join(__dirname, 'mock-live.html'), 'utf8');
+const MOCK_SHOPEE = fs.readFileSync(path.join(__dirname, 'mock-shopee.html'), 'utf8');
+
+const NOME_CLH = 'Caneca Térmica Inox 500ml Azul Premium'; // CLH-NZK-QPT: novo (ainda não favoritado)
+const NOME_ANJ = 'Garrafa Squeeze 1L Preta com Tampa Rosqueável'; // ANJ-EGH-KLV: já favoritado
+const NOME_NA_SACOLA = 'Camiseta Dry Fit Preta Masculina Esportiva'; // favorito que já está na sacola
+const SELECT_ID = 'input.shopee-searchbar-input__input';
+
+// Favoritos iniciais: 1 já na sacola, ANJ, e enchimento para a grade precisar de rolagem.
+const favoritos = [
+  { name: NOME_NA_SACOLA, inBag: true },
+  { name: NOME_ANJ, inBag: false },
+  ...Array.from({ length: 12 }, (_, i) => ({ name: `Produto de enchimento número ${String(i + 1).padStart(2, '0')} para rolagem`, inBag: false })),
+];
+const iniciais = favoritos.map((f) => f.name);
+const toggles = []; // nomes favoritados/desfavoritados pela Shopee, em ordem
 
 (async () => {
   const userDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sla-'));
@@ -16,90 +44,104 @@ const MOCK = fs.readFileSync(path.join(__dirname, 'mock-live.html'), 'utf8');
     headless: true,
     args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`],
   });
-  const page = ctx.pages()[0] || (await ctx.newPage());
   const errors = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-  page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
-  await ctx.route('https://seller.shopee.com.br/**', (r) => r.fulfill({ contentType: 'text/html', body: MOCK }));
-  await page.goto('https://seller.shopee.com.br/live');
+  const vigia = (p) => {
+    p.on('pageerror', (e) => errors.push(e.message));
+    p.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+  };
+  ctx.on('page', vigia);
 
-  const P = (s) => page.locator('#sla-host').locator(s);
-  const step = (msg) => console.log('✔', msg);
-  await P('.panel').waitFor();
-  step('painel injetado');
-
-  // 1. ensinar
-  await P('[data-tab=config]').click();
-  await P('[data-a=teach][data-t=chat]').click();
-  await page.locator('.k2Msg').nth(1).click();
-  await P('[data-a=teach][data-t=bag]').click();
-  await page.locator('.q9Item .t').first().click();
-  await P('[data-a=teach][data-t=highlight]').click();
-  await page.locator('.q9Item .pinBtn').first().click();
-  assert.strictEqual(await page.textContent('#pinned'), 'nenhum', 'clique de ensino não deve chegar à página');
-  assert.strictEqual(await P('.body .row .no').count(), 0, 'os 3 itens devem estar ensinados');
-  step('chat, sacola e botão destacar ensinados');
-
-  // 2. gravar fluxo
-  await P('#example').fill('Caneca Térmica');
-  await P('[data-a=recStart]').click();
-  await page.click('#openAdd');
-  await page.click('.srch');
-  await page.fill('.srch', 'Caneca Térmica');
-  await page.locator('label.res span').first().click();
-  await page.click('#confirm');
-  await P('[data-a=recStop]').click();
-  const steps = await P('ol.steps li').allTextContents();
-  console.log('   passos:', steps);
-  assert.ok(steps.some((s) => s.includes('{busca}')), 'busca deve virar variável');
-  assert.ok(steps.some((s) => s.includes('resultado do produto')), 'clique no resultado deve ser por produto');
-  step('fluxo gravado');
-
-  // 3. catálogo
-  await P('[data-tab=catalogo]').click();
-  await P('#csv').fill('codigo;nome;busca\n1;Camiseta Dry Fit Preta;\n2;Caneca Térmica 500ml;\n3;Boné Aba Curva;\n4;Meia Cano Alto Kit 3;Meia Cano\n5;Garrafa Squeeze 1L;1005');
-  await P('[data-a=csvSave]').click();
-  assert.strictEqual(await P('.body .row').count(), 5);
-  step('catálogo importado');
-
-  // 4. chat -> pedidos
-  await P('[data-tab=pedidos]').click();
-  await page.evaluate(() => {
-    postChat('bia', 'quero o #4 por favor');
-    postChat('carlos', '#99');
-    postChat('duda', 'quero o 4 tbm');
-    postChat('ana', '1');
+  await ctx.exposeFunction('__favGet', () => favoritos.map((f) => ({ ...f })));
+  await ctx.exposeFunction('__favHas', (nome) => favoritos.some((f) => f.name === nome));
+  await ctx.exposeFunction('__favToggle', (nome) => {
+    toggles.push(nome);
+    const i = favoritos.findIndex((f) => f.name === nome);
+    if (i >= 0) favoritos.splice(i, 1);
+    else favoritos.push({ name: nome, inBag: false });
+    return i < 0;
   });
-  await P('.req:has(.code:text-is("#4")) .pill.novo').waitFor();
-  assert.match(await P('.req:has(.code:text-is("#4")) .meta').textContent(), /2× pedido · duda, bia/);
-  await P('.req:has(.code:text-is("#99")) .pill.desconhecido').waitFor();
-  await P('.req:has(.code:text-is("#1")) .pill.na_sacola').waitFor({ timeout: 5000 });
-  step('pedidos lidos do chat (#4 ×2, #99 fora do catálogo, #1 já na sacola)');
 
-  // 5. adicionar manualmente
-  await P('[data-a=add][data-c="4"]').click();
-  await P('.req:has(.code:text-is("#4")) .pill.na_sacola').waitFor({ timeout: 15000 });
-  assert.deepStrictEqual(await page.evaluate(() => window.__added), ['Caneca Térmica 500ml', 'Meia Cano Alto Kit 3']);
-  step('#4 adicionado à sacola pelo fluxo gravado');
+  const serve = (html) => (r) =>
+    r.request().url().endsWith('/favicon.ico')
+      ? r.fulfill({ status: 204 })
+      : r.fulfill({ contentType: 'text/html; charset=utf-8', body: html });
+  await ctx.route('https://live.shopee.com.br/**', serve(MOCK_LIVE));
+  await ctx.route('https://shopee.com.br/**', serve(MOCK_SHOPEE));
 
-  // 6. destacar
-  await P('[data-a=hl][data-c="4"]').click();
-  await page.waitForFunction(() => document.querySelector('#pinned').textContent === 'Meia Cano Alto Kit 3');
-  await page.keyboard.press('Alt+ArrowUp');
-  await page.waitForFunction(() => document.querySelector('#pinned').textContent === 'Caneca Térmica 500ml');
-  step('destaque por botão e por atalho Alt+↑');
+  const step = (msg) => console.log('OK', msg);
+  const until = async (fn, msg, timeout = 30000) => {
+    const fim = Date.now() + timeout;
+    for (;;) {
+      if (await fn()) return;
+      if (Date.now() > fim) throw new Error('tempo esgotado: ' + msg);
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  };
 
-  // 7. automático (busca pelo ID do anúncio)
-  await P('[data-a=auto]').check();
-  await page.evaluate(() => postChat('dani', 'manda o 5'));
-  await P('.req:has(.code:text-is("#5")) .pill.na_sacola').waitFor({ timeout: 15000 });
-  assert.ok((await page.evaluate(() => window.__added)).includes('Garrafa Squeeze 1L'));
-  step('modo automático adicionou #5 assim que pediram no chat');
+  const page = ctx.pages()[0] || (await ctx.newPage());
+  vigia(page);
+  await page.goto('https://live.shopee.com.br/pc/live');
+  const painel = page.locator('#sla-live-host');
+  await painel.waitFor({ state: 'attached' });
+  const body = () => painel.locator('.body').innerText();
+  const statusDoLote = () => painel.locator('li:has(.st) .st').allTextContents();
+  step('painel injetado na live');
 
-  // 8. persiste após recarregar
-  await page.reload();
-  await P('.req:has(.code:text-is("#5"))').waitFor();
-  step('estado mantido após recarregar a página');
+  // 1. selecionar do pedido do ANJ ao último CLH (ZZZ não existe; CLH aparece de dois usuários)
+  await page.evaluate(() => {
+    const msgs = [...document.querySelectorAll('[class*="message-content"]')];
+    const a = msgs.find((m) => m.textContent.includes('ANJ-EGH-KLV'));
+    const b = msgs.find((m) => m.textContent.includes('eu também'));
+    const r = document.createRange();
+    r.setStart(a.firstChild, 0);
+    r.setEnd(b.firstChild, b.firstChild.length);
+    const s = getSelection();
+    s.removeAllRanges();
+    s.addRange(r);
+    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  });
+  await until(async () => (await painel.locator('ul li code').count()) === 3, 'painel listar 3 IDs', 5000);
+  assert.deepStrictEqual(await painel.locator('ul li code').allTextContents(), ['ANJ-EGH-KLV', 'ZZZ-YYY-XXX', 'CLH-NZK-QPT']);
+  step('painel lista os 3 IDs do chat (repetido contado uma vez)');
+
+  // 2. Processar lote abre a aba da Shopee
+  const [shopee] = await Promise.all([ctx.waitForEvent('page'), painel.locator('button[data-act=start]').click()]);
+  let shopeeFechou = false;
+  shopee.on('close', () => { shopeeFechou = true; });
+  await shopee.waitForLoadState('load');
+  step('aba da Shopee aberta');
+
+  // 3. um clique na busca por ID (a extensão cola o ID, dá Enter e favorita se preciso)
+  for (let k = 1; k <= 3; k++) {
+    await shopee.waitForTimeout(800); // deixa o script da extensão instalar o ouvinte de clique
+    await shopee.locator(SELECT_ID).click();
+    await until(async () => (await statusDoLote()).filter((s) => s !== 'na fila').length >= k, `ID ${k} resolvido`);
+    step(`clique ${k}: ID resolvido`);
+  }
+
+  // 4. a aba da Shopee fecha sozinha e a live marca os favoritos
+  await until(() => shopeeFechou, 'aba da Shopee fechar');
+  step('aba da Shopee fechou');
+  await until(async () => /2 marcados/.test(await body()), 'aviso "2 marcados"', 40000);
+  step('live marcou os favoritos');
+
+  // 5. verificações
+  assert.deepStrictEqual(await statusDoLote(), ['já estava favoritado', 'não achei', 'favoritado']);
+  assert.deepStrictEqual(toggles, [NOME_CLH], 'só o produto novo foi favoritado; ninguém foi desfavoritado');
+  for (const n of iniciais) assert.ok(favoritos.some((f) => f.name === n), 'favorito inicial removido: ' + n);
+  assert.ok(favoritos.some((f) => f.name === NOME_CLH), 'CLH deveria estar favoritado');
+  assert.strictEqual(favoritos.length, iniciais.length + 1);
+
+  const cards = await page.evaluate(() =>
+    [...document.querySelectorAll('#grade label')].map((l) => ({ nome: l.querySelector('[class*="name"]').textContent, marcado: l.querySelector('input').checked }))
+  );
+  const marcado = (prefixo) => (cards.find((c) => c.nome.startsWith(prefixo)) || {}).marcado;
+  assert.strictEqual(marcado('Caneca Térmica Inox'), true, 'CLH marcado na grade (nome truncado)');
+  assert.strictEqual(marcado('Garrafa Squeeze 1L Preta'), true, 'ANJ marcado na grade');
+  assert.strictEqual(marcado('Camiseta Dry Fit'), true, 'o que já estava na sacola continua marcado');
+  assert.strictEqual(cards.filter((c) => c.marcado).length, 3, 'só 3 marcados (nenhum card a mais)');
+  assert.strictEqual(await page.evaluate(() => window.__confirmClicks), 0, 'a extensão nunca clica em Confirmar');
+  step('favoritos finais, grade marcada e __confirmClicks === 0');
 
   await page.screenshot({ path: process.env.SHOT || path.join(os.tmpdir(), 'sla-e2e.png') });
   assert.deepStrictEqual(errors, [], 'sem erros no console');
