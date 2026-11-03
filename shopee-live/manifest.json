@@ -7,15 +7,22 @@
   "background": { "service_worker": "src/background.js" },
   "content_scripts": [
     {
-      "matches": ["https://*.shopee.com.br/*"],
+      "matches": ["https://live.shopee.com.br/*"],
       "js": [
-        "src/lib/codes.js",
-        "src/lib/catalog.js",
-        "src/lib/selector.js",
-        "src/lib/dom.js",
+        "src/lib/ids.js",
+        "src/lib/batch.js",
+        "src/lib/match.js",
         "src/lib/selectors.js",
-        "src/content.js"
+        "src/lib/dom.js",
+        "src/live/addProducts.js",
+        "src/live/panel.js"
       ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*.shopee.com.br/*"],
+      "exclude_matches": ["https://live.shopee.com.br/*"],
+      "js": ["src/lib/selectors.js", "src/lib/dom.js", "src/shopee/hand.js"],
       "run_at": "document_idle"
     }
   ]
