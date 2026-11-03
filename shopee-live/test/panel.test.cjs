@@ -137,3 +137,12 @@ test('findExtraAction: acha a ação em qualquer aba extra; null para desconheci
   assert.strictEqual(P.findExtraAction([{ key: 'x' }], 'buscar'), null);
   assert.strictEqual(P.findExtraAction([], 'buscar'), null);
 });
+
+test('findExtraAction: só chaves próprias (constructor/toString herdados não valem)', () => {
+  const f = () => {};
+  const tabs = [{ key: 'a', opts: { actions: { buscar: f } } }];
+  assert.strictEqual(P.findExtraAction(tabs, 'constructor'), null);
+  assert.strictEqual(P.findExtraAction(tabs, 'toString'), null);
+  assert.strictEqual(P.findExtraAction(tabs, 'hasOwnProperty'), null);
+  assert.strictEqual(typeof P.findExtraAction(tabs, 'buscar'), 'function');
+});

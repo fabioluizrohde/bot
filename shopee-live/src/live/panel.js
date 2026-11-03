@@ -94,8 +94,8 @@
   // Procura a ação (valor de data-act) nas abas extras. tabs: [{key, opts?: {actions?}}].
   function findExtraAction(tabs, act) {
     for (const t of tabs || []) {
-      const fn = t && t.opts && t.opts.actions && t.opts.actions[act];
-      if (typeof fn === 'function') return fn;
+      const actions = t && t.opts && t.opts.actions;
+      if (actions && Object.prototype.hasOwnProperty.call(actions, act) && typeof actions[act] === 'function') return actions[act];
     }
     return null;
   }
@@ -127,7 +127,7 @@
   function notifyActive(key, active) {
     const t = extraTabs.find((x) => x.key === key);
     if (t && t.opts && typeof t.opts.onActive === 'function') {
-      try { t.opts.onActive(active); } catch (_) { /* ignora */ }
+      try { t.opts.onActive(active); } catch (e) { console.error(`[SLA] onActive da aba "${key}" falhou`, e); }
     }
   }
 
@@ -141,9 +141,14 @@
 
   // Chama a ação de uma aba extra, se existir; erro dela é ignorado.
   function runExtra(el, ev) {
-    const fn = findExtraAction(extraTabs.map((t) => ({ key: t.key, opts: t.opts })), el.dataset.act);
-    if (!fn) return false;
-    try { fn(el, ev); } catch (_) { /* ignora */ }
+    const act = el.dataset.act;
+    const tab = extraTabs.find((t) => findExtraAction([t], act));
+    if (!tab) return false;
+    const log = (e) => console.error(`[SLA] ação "${act}" da aba "${tab.key}" falhou`, e);
+    try {
+      const r = tab.opts.actions[act](el, ev); // síncrona continua síncrona
+      if (r && typeof r.then === 'function') r.then(null, log); // async que rejeita também é registrada
+    } catch (e) { log(e); }
     return true;
   }
 
