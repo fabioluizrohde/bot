@@ -3,7 +3,8 @@
   "name": "Assistente de Live Shopee",
   "version": "0.1.0",
   "description": "Ajuda o apresentador de lives da Shopee Brasil: lê códigos pedidos no chat, adiciona produtos à sacola e destaca o produto da vez.",
-  "permissions": ["storage"],
+  "permissions": ["storage", "tabs"],
+  "background": { "service_worker": "src/background.js" },
   "content_scripts": [
     {
       "matches": ["https://*.shopee.com.br/*"],
