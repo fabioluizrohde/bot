@@ -153,6 +153,26 @@ test('noticeText: ID k de N, ou pedido de verificação quando pausado', () => {
   assert.match(H.noticeText({ index: 2, total: 3 }, true), /resolva e clique em Continuar/);
 });
 
+test('noticeText: diz o que aconteceu com o ID anterior e o que fazer agora', () => {
+  const item = { index: 3, total: 4 };
+  const naoAchei = H.noticeText(item, false, { id: 'ZZZ-AAA-SSS', status: 'nao_achei' });
+  assert.match(naoAchei, /ZZZ-AAA-SSS/);
+  assert.match(naoAchei, /não achei/i);
+  assert.match(naoAchei, /ID 3 de 4: clique na busca/);
+  assert.match(H.noticeText(item, false, { id: 'ANJ-EGH-KLV', status: 'favoritado' }), /ANJ-EGH-KLV.*favoritado/);
+  assert.match(H.noticeText(item, false, { id: 'ANJ-EGH-KLV', status: 'ja_favoritado' }), /já estava favoritado/);
+  // sem resultado anterior, o texto continua o mesmo de antes
+  assert.strictEqual(H.noticeText(item, false, null), 'ID 3 de 4: clique na busca');
+  // pausado por verificação: o aviso de verificação vence
+  assert.match(H.noticeText(item, true, { id: 'X', status: 'nao_achei' }), /Verificação da Shopee/);
+});
+
+test('rotuloResultado: texto claro por status, vazio para status desconhecido', () => {
+  assert.match(H.rotuloResultado('nao_achei'), /não achei/i);
+  assert.match(H.rotuloResultado('favoritado'), /favoritado/);
+  assert.strictEqual(H.rotuloResultado('captcha'), '');
+});
+
 test('keepsTab: só continua na Shopee enquanto o lote está resolvendo', () => {
   assert.strictEqual(H.keepsTab({ phase: 'resolving' }), true);
   assert.strictEqual(H.keepsTab({ phase: 'adding' }), false);

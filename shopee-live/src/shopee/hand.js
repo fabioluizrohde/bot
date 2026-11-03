@@ -5,6 +5,7 @@
   const SLA = (root.SLA = root.SLA || {});
 
   const PENDING_KEY = 'sla-hand-pending'; // sessionStorage: ID colado e onde a busca começou (sobrevive ao redirecionamento)
+  const LAST_KEY = 'sla-hand-last'; // sessionStorage: resultado do ID anterior, para o aviso
   const NOTICE_ID = 'sla-hand-notice';
   const SEARCH_TIMEOUT = 10000;
   const TITLE_TIMEOUT = 3000; // espera o título mudar para o do produto novo
@@ -108,9 +109,20 @@
     return shouldFinish({ startUrl: pending.startUrl, currentUrl }) ? 'finish' : 'check';
   }
 
-  function noticeText(item, parado) {
+  // Texto curto do que aconteceu com um ID; vazio para status que não merecem aviso (ex.: captcha).
+  function rotuloResultado(status) {
+    if (status === 'favoritado') return 'favoritado ✓';
+    if (status === 'ja_favoritado') return 'já estava favoritado ✓';
+    if (status === 'nao_achei') return 'não achei produto com esse ID ✗ (a Shopee mostra "lojas relacionadas"; siga para o próximo)';
+    return '';
+  }
+
+  // "ultimo" = { id, status } do ID anterior: o apresentador vê o que aconteceu e o que fazer agora.
+  function noticeText(item, parado, ultimo) {
     if (parado) return `Verificação da Shopee (ID ${item.index} de ${item.total}): resolva e clique em Continuar`;
-    return `ID ${item.index} de ${item.total}: clique na busca`;
+    const atual = `ID ${item.index} de ${item.total}: clique na busca`;
+    const rotulo = ultimo ? rotuloResultado(ultimo.status) : '';
+    return rotulo ? `${ultimo.id}: ${rotulo}\n${atual}` : atual;
   }
 
   // A aba da Shopee continua aberta (há mais IDs) depois deste resultado?
@@ -132,6 +144,20 @@
 
   function clearPending() {
     try { sessionStorage.removeItem(PENDING_KEY); } catch (_) { /* ignora */ }
+  }
+
+  // Resultado do ID anterior: sobrevive às recargas de página da Shopee (sessionStorage da aba).
+  function guardarUltimo(id, status) {
+    try { sessionStorage.setItem(LAST_KEY, JSON.stringify({ id, status })); } catch (_) { /* ignora */ }
+  }
+
+  function lerUltimo() {
+    try {
+      const u = JSON.parse(sessionStorage.getItem(LAST_KEY) || 'null');
+      return u && typeof u.id === 'string' && typeof u.status === 'string' ? u : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   function addButton(box, label, onClick) {
@@ -157,6 +183,7 @@
         'padding:10px 14px;border-radius:8px;font:14px sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.3)';
       document.documentElement.appendChild(box);
     }
+    box.style.whiteSpace = 'pre-line'; // permite o aviso em duas linhas
     box.textContent = text;
     if (o.onContinue) addButton(box, 'Continuar', o.onContinue);
     if (o.onSkip) addButton(box, 'Pular este ID', o.onSkip);
@@ -173,6 +200,7 @@
   async function sendResult(id, status, name) {
     if (pulados.has(id)) return null;
     if (status === 'captcha') liberado = false; // nova verificação: espera um novo "Continuar"
+    guardarUltimo(id, status);
     const msg = { type: 'hand:result', id, status };
     if (name) msg.name = name;
     const nb = await send(msg);
@@ -190,6 +218,7 @@
     pulados.add(id);
     clearPending();
     hideNotice();
+    guardarUltimo(id, 'nao_achei');
     const nb = await send({ type: 'hand:result', id, status: 'nao_achei' });
     if (keepsTab(nb)) refresh().catch(() => {});
   }
@@ -280,7 +309,8 @@
     const item = await send({ type: 'hand:next' });
     if (!item) return hideNotice();
     const parado = batch.paused && !liberado;
-    showNotice(noticeText(item, parado), {
+    const ultimo = lerUltimo();
+    showNotice(noticeText(item, parado, ultimo && ultimo.id !== item.id ? ultimo : null), {
       onContinue: parado
         ? () => {
             liberado = true;
@@ -343,6 +373,7 @@
     parsePending,
     decideOnLoad,
     noticeText,
+    rotuloResultado,
     keepsTab,
     init,
   };
