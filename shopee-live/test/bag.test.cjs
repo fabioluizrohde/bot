@@ -109,3 +109,124 @@ test('filterBag', () => {
 test('imageUrl', () => {
   assert.strictEqual(bag.imageUrl('sg-1'), bag.IMG_BASE + 'sg-1');
 });
+
+test('normalizeBag ignora elementos que não são objetos', () => {
+  const r = bag.normalizeBag({ err_code: 0, data: { items: [null, 5, 'x', { id: 3, name: 'Ok' }, undefined] } });
+  assert.strictEqual(r.items.length, 1);
+  assert.strictEqual(r.items[0].n, 3);
+  assert.strictEqual(r.items[0].name, 'Ok');
+});
+
+// ---- readBag ----
+function mkItems(from, to) {
+  const out = [];
+  for (let i = from; i <= to; i++) out.push({ id: i, item_id: 100 + i, shop_id: 1, name: 'P' + i, price: '1.00' });
+  return out;
+}
+function fakeFetch(responses) {
+  const urls = [];
+  const opts = [];
+  let i = 0;
+  const fn = async (url, o) => {
+    urls.push(url);
+    opts.push(o);
+    const r = responses[Math.min(i++, responses.length - 1)];
+    if (r instanceof Error) throw r;
+    return r;
+  };
+  fn.urls = urls;
+  fn.opts = opts;
+  return fn;
+}
+function page(items, extra) {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({ err_code: 0, data: Object.assign({ items, has_more: false, next_offset: 0, total_count: items.length, max_items: 100 }, extra) }),
+  };
+}
+
+test('readBag: uma página só', async () => {
+  const f = fakeFetch([page(mkItems(1, 3), { max_items: 100 })]);
+  const r = await bag.readBag('7034350', f);
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.items.length, 3);
+  assert.strictEqual(r.total, 3);
+  assert.strictEqual(r.maxItems, 100);
+  assert.strictEqual(f.urls.length, 1);
+  assert.ok(f.urls[0].includes('/session/7034350/host/items'));
+  assert.ok(f.urls[0].includes('visible=true'));
+  assert.ok(f.urls[0].includes('offset=0'));
+  assert.ok(f.urls[0].includes('limit=1000'));
+  assert.deepStrictEqual(f.opts[0], { credentials: 'include' });
+});
+
+test('readBag: 100 itens em duas páginas', async () => {
+  const f = fakeFetch([
+    page(mkItems(1, 60), { has_more: true, next_offset: 60, total_count: 100 }),
+    page(mkItems(61, 100), { has_more: false, next_offset: 100, total_count: 100 }),
+  ]);
+  const r = await bag.readBag('1', f);
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.items.length, 100);
+  assert.strictEqual(f.urls.length, 2);
+  assert.ok(f.urls[1].includes('offset=60'));
+  assert.strictEqual(new Set(r.items.map((c) => c.n)).size, 100);
+});
+
+test('readBag: página que repete o último item não duplica', async () => {
+  const f = fakeFetch([
+    page(mkItems(1, 60), { has_more: true, next_offset: 59 }),
+    page(mkItems(60, 100), { has_more: false }),
+  ]);
+  const r = await bag.readBag('1', f);
+  assert.strictEqual(r.items.length, 100);
+  assert.strictEqual(new Set(r.items.map((c) => c.n)).size, 100);
+});
+
+test('readBag: fetch que lança vira rede', async () => {
+  const r = await bag.readBag('1', fakeFetch([new Error('offline')]));
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.reason, 'rede');
+});
+
+test('readBag: status 500 vira http', async () => {
+  const r = await bag.readBag('1', fakeFetch([{ ok: false, status: 500, json: async () => ({}) }]));
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.reason, 'http');
+  assert.strictEqual(r.detail, '500');
+});
+
+test('readBag: corpo que não é JSON vira formato', async () => {
+  const bad = { ok: true, status: 200, json: async () => { throw new SyntaxError('<html>'); } };
+  const r = await bag.readBag('1', fakeFetch([bad]));
+  assert.deepStrictEqual({ ok: r.ok, reason: r.reason }, { ok: false, reason: 'formato' });
+});
+
+test('readBag: err_code diferente de 0 vira formato', async () => {
+  const r = await bag.readBag('1', fakeFetch([{ ok: true, status: 200, json: async () => ({ err_code: 3, data: {} }) }]));
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.reason, 'formato');
+});
+
+test('readBag: exceção ao normalizar vira formato, sem escapar', async () => {
+  const weird = { ok: true, status: 200, json: async () => ({ err_code: 0, data: { items: [{ id: 1, get name() { throw new Error('boom'); } }] } }) };
+  const r = await bag.readBag('1', fakeFetch([weird]));
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.reason, 'formato');
+});
+
+test('readBag: para em 20 páginas com has_more sempre true', async () => {
+  let n = 0;
+  const f = async (url) => {
+    f.urls.push(url);
+    const start = n * 10 + 1;
+    n++;
+    return page(mkItems(start, start + 9), { has_more: true, next_offset: n * 10 });
+  };
+  f.urls = [];
+  const r = await bag.readBag('1', f);
+  assert.strictEqual(f.urls.length, 20);
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.items.length, 200);
+});
