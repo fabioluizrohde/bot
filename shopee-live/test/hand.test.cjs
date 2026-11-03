@@ -15,22 +15,28 @@ test('isProductUrl: busca, home e lixo não são produto', () => {
   assert.strictEqual(isProductUrl(null), false);
 });
 
-// Elemento falso mínimo: só o que isFavorited usa (matches e querySelector).
-function fakeEl({ self = false, inner = false } = {}) {
-  return { matches: () => self, querySelector: () => (inner ? {} : null) };
+// Elemento falso mínimo: matches, querySelector (marca de cheio ou ícone) e parentElement.
+function fakeEl({ self = false, filled = false, icon = false, parent = null } = {}) {
+  return {
+    parentElement: parent,
+    matches: () => self,
+    querySelector: (sel) => (sel.includes('filled') ? (filled ? {} : null) : icon ? {} : null),
+  };
 }
 
-test('isFavorited: coração cheio dentro do botão', () => {
-  assert.strictEqual(isFavorited(fakeEl({ inner: true })), true);
-});
-
-test('isFavorited: o próprio elemento é a marca', () => {
+test('isFavorited: coração cheio dentro do botão ou no contêiner', () => {
+  assert.strictEqual(isFavorited(fakeEl({ filled: true })), true);
   assert.strictEqual(isFavorited(fakeEl({ self: true })), true);
+  assert.strictEqual(isFavorited(fakeEl({ parent: fakeEl({ filled: true }) })), true);
 });
 
-test('isFavorited: coração vazio ou elemento ausente', () => {
-  assert.strictEqual(isFavorited(fakeEl()), false);
-  assert.strictEqual(isFavorited(null), false);
+test('isFavorited: coração vazio (ícone sem marca de cheio) é false', () => {
+  assert.strictEqual(isFavorited(fakeEl({ icon: true })), false);
+});
+
+test('isFavorited: sem como saber (nem ícone) ou elemento ausente é null', () => {
+  assert.strictEqual(isFavorited(fakeEl()), null);
+  assert.strictEqual(isFavorited(null), null);
 });
 
 test('cleanProductName: tira o sufixo da Shopee', () => {

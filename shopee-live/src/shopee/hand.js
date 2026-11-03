@@ -22,11 +22,19 @@
     return /\/affiliation-i\.\d+\.\d+/.test(path) || /\/product\/\d+\/\d+/.test(path);
   }
 
-  // "el" é o botão de favoritar (ou um contêiner dele). Coração cheio = já favoritado.
+  // "el" é o botão de favoritar. Procura o coração no botão e no contêiner dele.
+  // true = cheio (favoritado); false = coração vazio visível; null = não deu para saber.
   function isFavorited(el) {
-    if (!el) return false;
-    const sel = SLA.selectors.favoriteFilledMark;
-    return !!((typeof el.matches === 'function' && el.matches(sel)) || el.querySelector(sel));
+    if (!el) return null;
+    const escopos = [el, el.parentElement].filter(Boolean);
+    const cheio = SLA.selectors.favoriteFilledMark;
+    for (const e of escopos) {
+      if ((typeof e.matches === 'function' && e.matches(cheio)) || e.querySelector(cheio)) return true;
+    }
+    for (const e of escopos) {
+      if (e.querySelector('svg, [class*="icon"]')) return false; // há ícone, mas sem a marca de cheio
+    }
+    return null;
   }
 
   function cleanProductName(title) {
@@ -74,21 +82,30 @@
   async function finishProduct(item) {
     const D = SLA.dom;
     try { sessionStorage.removeItem(PENDING_KEY); } catch (_) { /* ignora */ }
-    const btn = await D.waitFor(
-      () => D.findClickableByText(document, new RegExp('^\s*' + D.escapeRe(SLA.selectors.favoriteButton), 'i')),
-      SEARCH_TIMEOUT
-    );
+    const achaBotao = () =>
+      D.findClickableByText(document, new RegExp('^\\s*' + D.escapeRe(SLA.selectors.favoriteButton), 'i'));
+    const btn = await D.waitFor(achaBotao, SEARCH_TIMEOUT);
     if (!btn) {
       await send({ type: 'hand:result', id: item.id, status: captchaVisible() ? 'captcha' : 'nao_achei' });
       return;
     }
     const name = cleanProductName(document.title);
-    let status = 'ja_favoritado';
-    if (!isFavorited(btn)) {
-      D.realClick(btn); // é um liga/desliga: só clica quando NÃO está favoritado
-      status = 'favoritado';
+    // Sem certeza do estado do coração (ou o clique não pegou): não reporta sucesso; o Fabio favorita à mão.
+    const manual = () =>
+      showNotice('Não consegui ver se o coração está cheio — favorite à mão e clique em Continuar', true, async () => {
+        hideNotice();
+        await send({ type: 'hand:result', id: item.id, status: 'ja_favoritado', name });
+      });
+    const estado = isFavorited(btn);
+    if (estado === null) return manual();
+    if (estado === true) {
+      await send({ type: 'hand:result', id: item.id, status: 'ja_favoritado', name });
+      return;
     }
-    await send({ type: 'hand:result', id: item.id, status, name });
+    D.realClick(btn); // é um liga/desliga: só clica quando o coração está vazio
+    const ok = await D.waitFor(() => isFavorited(achaBotao()) === true, 4000);
+    if (!ok) return manual();
+    await send({ type: 'hand:result', id: item.id, status: 'favoritado', name });
   }
 
   // Cola o ID na busca, dá Enter e espera virar página de produto.
