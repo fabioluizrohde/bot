@@ -119,3 +119,21 @@ test('planMarkResults: ja_na_sacola de um ID que a própria extensão marcou ant
   assert.deepStrictEqual(r.marcados, ['A', 'C']);
   assert.deepStrictEqual(r.updates, [{ id: 'B', status: 'ja_na_sacola' }]);
 });
+
+// ---------- Ponto de extensão: abas extras com ações ----------
+
+test('findExtraAction: acha a ação em qualquer aba extra; null para desconhecida, aba sem opts e lista vazia', () => {
+  const fa = () => 'a';
+  const fb = () => 'b';
+  const tabs = [
+    { key: 'x', label: 'X', render: () => '' },
+    { key: 'a', opts: { actions: { buscar: fa } } },
+    { key: 'b', opts: { actions: { salvar: fb } } },
+    { key: 'c', opts: {} },
+  ];
+  assert.strictEqual(P.findExtraAction(tabs, 'buscar'), fa);
+  assert.strictEqual(P.findExtraAction(tabs, 'salvar'), fb);
+  assert.strictEqual(P.findExtraAction(tabs, 'nada'), null);
+  assert.strictEqual(P.findExtraAction([{ key: 'x' }], 'buscar'), null);
+  assert.strictEqual(P.findExtraAction([], 'buscar'), null);
+});

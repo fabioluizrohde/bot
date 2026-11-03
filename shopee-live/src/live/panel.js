@@ -91,21 +91,60 @@
     return { marcados, updates };
   }
 
+  // Procura a ação (valor de data-act) nas abas extras. tabs: [{key, opts?: {actions?}}].
+  function findExtraAction(tabs, act) {
+    for (const t of tabs || []) {
+      const fn = t && t.opts && t.opts.actions && t.opts.actions[act];
+      if (typeof fn === 'function') return fn;
+    }
+    return null;
+  }
+
   // ---------- Comportamento no navegador (sem teste automático) ----------
 
   // marcados: IDs que a extensão marcou e esperam o Confirmar; stopWatch: vigia do Confirmar ativa (ou null).
   const state = { ids: [], batch: null, openIn: 'tab', aviso: '', tab: 'lote', marcando: false, marcados: [], stopWatch: null };
-  const extraTabs = []; // {key, label, render}
+  const extraTabs = []; // {key, label, render, opts}
+  const BUILTIN_ACTS = ['tab', 'rm', 'openIn', 'start', 'reopen', 'clear', 'mark'];
   let shadow = null;
 
   const send = (msg) => chrome.runtime.sendMessage(msg);
 
-  function registerTab(key, label, render) {
+  // opts.actions: {data-act: (el, ev) => void}; opts.onActive(ativa:boolean): aviso ao entrar/sair da aba.
+  function registerTab(key, label, render, opts) {
     const i = extraTabs.findIndex((t) => t.key === key);
-    const t = { key, label, render };
+    const t = { key, label, render, opts: opts || {} };
     if (i >= 0) extraTabs[i] = t;
     else extraTabs.push(t);
     if (shadow) draw();
+  }
+
+  function redraw() { draw(); }
+
+  function isTabActive(key) { return state.tab === key; }
+
+  // Avisa a aba extra (se tiver onActive) sem deixar um erro dela quebrar o painel.
+  function notifyActive(key, active) {
+    const t = extraTabs.find((x) => x.key === key);
+    if (t && t.opts && typeof t.opts.onActive === 'function') {
+      try { t.opts.onActive(active); } catch (_) { /* ignora */ }
+    }
+  }
+
+  function setTab(key) {
+    if (key === state.tab) return;
+    const anterior = state.tab;
+    state.tab = key;
+    notifyActive(anterior, false);
+    notifyActive(key, true);
+  }
+
+  // Chama a ação de uma aba extra, se existir; erro dela é ignorado.
+  function runExtra(el, ev) {
+    const fn = findExtraAction(extraTabs.map((t) => ({ key: t.key, opts: t.opts })), el.dataset.act);
+    if (!fn) return false;
+    try { fn(el, ev); } catch (_) { /* ignora */ }
+    return true;
   }
 
   const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
@@ -168,12 +207,26 @@
   function draw() {
     if (!shadow) return;
     const tabs = [{ key: 'lote', label: 'Lote', render: renderLote }, ...extraTabs, { key: 'config', label: 'Config', render: renderConfig }];
-    if (!tabs.some((t) => t.key === state.tab)) state.tab = 'lote';
+    if (!tabs.some((t) => t.key === state.tab)) setTab('lote');
     const cur = tabs.find((t) => t.key === state.tab);
+    // Guarda o foco (e o cursor) do campo marcado com data-focus-key, para a digitação não travar.
+    const ae = shadow.activeElement;
+    const focusKey = ae && ae.dataset ? ae.dataset.focusKey : null;
+    const selStart = focusKey ? ae.selectionStart : null;
+    const selEnd = focusKey ? ae.selectionEnd : null;
     shadow.querySelector('.tabs').innerHTML = tabs
       .map((t) => `<button data-act="tab" data-key="${esc(t.key)}" class="${t.key === state.tab ? 'on' : ''}">${esc(t.label)}</button>`)
       .join('');
     shadow.querySelector('.body').innerHTML = cur.render();
+    if (focusKey) {
+      try {
+        const novo = Array.from(shadow.querySelectorAll('[data-focus-key]')).find((e) => e.dataset.focusKey === focusKey);
+        if (novo) {
+          novo.focus();
+          if (selStart != null && typeof novo.setSelectionRange === 'function') novo.setSelectionRange(selStart, selEnd);
+        }
+      } catch (_) { /* ignora */ }
+    }
   }
 
   function stopWatching() {
@@ -251,13 +304,17 @@
     }
   }
 
-  async function onAction(el) {
+  async function onAction(el, ev) {
     const act = el.dataset.act;
-    if (act === 'tab') { state.tab = el.dataset.key; return draw(); }
+    if (act === 'tab') { setTab(el.dataset.key); return draw(); }
     if (act === 'rm') { state.ids = removeId(state.ids, el.dataset.id); return draw(); }
     if (act === 'openIn') {
       state.openIn = el.value;
       try { await chrome.storage.local.set({ openIn: state.openIn }); } catch (_) { /* ignora */ }
+      return;
+    }
+    if (!BUILTIN_ACTS.includes(act)) { // ação desconhecida: pode ser de uma aba extra
+      runExtra(el, ev);
       return;
     }
     state.aviso = '';
@@ -326,7 +383,12 @@
     enableDrag(shadow.querySelector('.box'), shadow.querySelector('.head'));
     shadow.addEventListener('click', (e) => {
       const el = e.target.closest && e.target.closest('[data-act]');
-      if (el && el.dataset.act !== 'openIn') onAction(el).catch(() => {});
+      if (el && el.dataset.act !== 'openIn') onAction(el, e).catch(() => {});
+    });
+    // Digitação (ex.: busca) só vai para ações de abas extras, nunca para as do painel.
+    shadow.addEventListener('input', (e) => {
+      const el = e.target && e.target.closest && e.target.closest('[data-act]');
+      if (el && !BUILTIN_ACTS.includes(el.dataset.act)) runExtra(el, e);
     });
     shadow.addEventListener('change', (e) => {
       if (e.target.dataset && e.target.dataset.act === 'openIn') onAction(e.target).catch(() => {});
@@ -342,7 +404,7 @@
     draw();
   }
 
-  SLA.panel = { registerTab, shouldMount, isInsideChat, filterOutBatch, mergeIds, removeId, statusLabel, viewState, normalizeResults, planMarkResults, init };
+  SLA.panel = { registerTab, redraw, isTabActive, findExtraAction, shouldMount, isInsideChat, filterOutBatch, mergeIds, removeId, statusLabel, viewState, normalizeResults, planMarkResults, init };
   if (typeof module !== 'undefined' && module.exports) module.exports = SLA.panel;
 
   if (typeof document !== 'undefined' && typeof chrome !== 'undefined' && chrome.runtime) {
