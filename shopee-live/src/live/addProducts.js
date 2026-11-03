@@ -21,19 +21,27 @@
     return !!x && x === n(b);
   }
 
-  // Junta o que foi visto agora (snapshot) ao já coletado, por NOME. Cards com o mesmo nome no mesmo
-  // snapshot são produtos distintos e continuam contando (para a ambiguidade ser detectada).
+  // Dois registros são o MESMO card? Pela posição na grade (estável ao rolar); sem posição, pelo nó.
+  // null = identidade desconhecida.
+  function samePlace(e, c) {
+    if (e.pos && c.pos) return Math.abs(e.pos.x - c.pos.x) <= 3 && Math.abs(e.pos.y - c.pos.y) <= 3;
+    if (e.node !== undefined && c.node !== undefined) return e.node === c.node;
+    return null;
+  }
+
+  // Junta o que foi visto agora (snapshot) ao já coletado. Mesmo nome + mesma posição = o mesmo card
+  // revisto; mesmo nome em outra posição (mesmo em outra janela de rolagem) = outro card, que conta
+  // (assim a ambiguidade é detectada). Sem identidade conhecida, vale a contagem por snapshot.
   function mergeCards(coletados, snapshot) {
     const out = coletados.slice();
-    const porNome = new Map();
+    const usados = new Set();
     for (const c of snapshot) {
       const k = SLA.match.normalizeName(c.name);
-      porNome.set(k, (porNome.get(k) || 0) + 1);
-    }
-    for (const [k, qtd] of porNome) {
-      const tem = out.filter((c) => SLA.match.normalizeName(c.name) === k).length;
-      const novos = snapshot.filter((c) => SLA.match.normalizeName(c.name) === k);
-      for (let i = tem; i < qtd; i++) out.push(novos[i]);
+      const achou = out.find(
+        (e) => !usados.has(e) && SLA.match.normalizeName(e.name) === k && samePlace(e, c) !== false
+      );
+      if (achou) usados.add(achou);
+      else { out.push(c); usados.add(c); }
     }
     return out;
   }
@@ -60,8 +68,16 @@
     return !!(el && el.closest('[disabled], [aria-disabled="true"], [class*="disabled"]'));
   }
 
+  // Posição do card no conteúdo rolável (não muda ao rolar).
+  function posOf(el, scroller) {
+    if (!scroller) return null;
+    const r = el.getBoundingClientRect();
+    const sr = scroller.getBoundingClientRect();
+    return { x: Math.round(r.left - sr.left + scroller.scrollLeft), y: Math.round(r.top - sr.top + scroller.scrollTop) };
+  }
+
   // Cards da grade: sobe de cada checkbox até o maior ancestral que só tem esse checkbox.
-  function collectCards(modal) {
+  function collectCards(modal, scroller) {
     if (!modal) return [];
     const s = S();
     const out = [];
@@ -72,7 +88,7 @@
       }
       const nomes = [...el.querySelectorAll(s.gridCardName)].map((n) => D().text(n)).filter(Boolean);
       if (!nomes.length) continue;
-      out.push({ name: nomes[0], checkbox: cb, el, get checked() { return !!cb.checked; } });
+      out.push({ name: nomes[0], checkbox: cb, node: cb, pos: posOf(el, scroller), el, get checked() { return !!cb.checked; } });
     }
     return out;
   }
@@ -129,7 +145,7 @@
     scroller.scrollTop = 0;
     let todos = [];
     const coleta = () => {
-      todos = mergeCards(todos, collectCards(modal));
+      todos = mergeCards(todos, collectCards(modal, scroller));
       return false; // continua rolando até o fim
     };
     coleta();
@@ -163,6 +179,11 @@
       let ok = await marcou(cb);
       if (!ok) { // às vezes só o rótulo responde: tenta UMA vez, só no label do próprio checkbox
         const label = cb.closest('label');
+        const agora = atual(cb);
+        if (label && !(agora && sameName(agora.name, card.name))) {
+          results.push({ id: it.id, status: 'conferir' }); // o card mudou: para de clicar
+          continue;
+        }
         if (label) {
           d.realClick(label);
           ok = await marcou(cb);

@@ -48,3 +48,24 @@ test('mergeCards: junta por nome, não repete entre passadas e mantém duplicado
   assert.strictEqual(todos.length, 3);
   assert.strictEqual(A.decide('Fone A completo', todos).status, 'conferir');
 });
+
+test('mergeCards: identidade por posição/nó separa homônimos em janelas de rolagem diferentes', () => {
+  const p = (y, x = 0) => ({ x, y });
+  // (1) mesmo card revisto em dois snapshots -> uma vez só (mesmo com nó diferente)
+  let t = A.mergeCards([], [{ name: 'Fone A', pos: p(100), node: 'n1' }]);
+  t = A.mergeCards(t, [{ name: 'Fone A', pos: p(101), node: 'n2' }]);
+  assert.strictEqual(t.length, 1);
+  // (2) dois homônimos no mesmo snapshot -> dois
+  t = A.mergeCards([], [{ name: 'Fone A', pos: p(100) }, { name: 'Fone A', pos: p(100, 200) }]);
+  assert.strictEqual(t.length, 2);
+  // (3) homônimos em snapshots diferentes, posições diferentes -> dois e ambíguo
+  t = A.mergeCards([], [{ name: 'Fone A', pos: p(100) }]);
+  t = A.mergeCards(t, [{ name: 'Fone A', pos: p(900) }]);
+  assert.strictEqual(t.length, 2);
+  assert.strictEqual(A.decide('Fone A completo', t).status, 'conferir');
+  // (4) nó reciclado com outro nome -> entrada nova do nome novo, sem duplicar o antigo
+  t = A.mergeCards([], [{ name: 'Fone A', pos: p(100), node: 'n1' }]);
+  t = A.mergeCards(t, [{ name: 'Capa B', pos: p(900), node: 'n1' }]);
+  assert.strictEqual(t.length, 2);
+  assert.deepStrictEqual(t.map((c) => c.name).sort(), ['Capa B', 'Fone A']);
+});
