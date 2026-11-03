@@ -1,6 +1,6 @@
 # Assistente de Live Shopee (extensão de navegador)
 
-Versão 0.2.0. Ajuda quem apresenta lives da Shopee Brasil a transformar **IDs de produto pedidos no chat** (como `CLH-NZK-QPT`) em produtos na sacola da live, sem digitar nada.
+Versão 0.3.0. Ajuda quem apresenta lives da Shopee Brasil a transformar **IDs de produto pedidos no chat** (como `CLH-NZK-QPT`) em produtos na sacola da live, sem digitar nada.
 
 ## O que ela faz hoje: Pedidos por ID em lote
 
@@ -9,27 +9,29 @@ Versão 0.2.0. Ajuda quem apresenta lives da Shopee Brasil a transformar **IDs d
 3. De volta à live, ela marca esses produtos na tela "Adicionar Produtos" (aba Meus Favoritos).
 4. **Você confere e clica em Confirmar.** A extensão não faz essa parte.
 
-O **painel da sacola** (lista numerada dos produtos e troca rápida do produto no ar) **ainda não está incluído**. É o próximo recurso.
+A **lista numerada da sacola** já está incluída (aba **Sacola**, só leitura; veja abaixo). **Trocar o produto no ar** e **adicionar o lote pelo painel** ficam para a próxima etapa.
 
-## Primeiro teste na live real (obrigatório antes de usar)
+## Aba Sacola
 
-Alguns textos e seletores da página da Shopee foram escolhidos por palpite e precisam ser confirmados uma vez na página real. Eles estão marcados com `PROBE-PENDING` em `src/lib/selectors.js` (seis no total):
+Mostra todos os produtos da sacola da live, **numerados**, cada um com foto, nome e preço. No topo há um contador como **"34 de 100"**: quantos produtos estão na sacola e qual o limite (esse limite vem da sua conta na Shopee).
 
-- a caixa de busca da página inicial da Shopee;
-- o botão Favoritar (texto sob as fotos do produto);
-- a marca do coração cheio (produto já favoritado);
-- o nome do produto no card da grade de Favoritos;
-- o quadradinho (checkbox) do card;
-- o aviso de verificação/captcha.
+- **Busca por número:** digite o número e aparece só o produto com aquele número exato (digitar 7 mostra o produto 7, não o 17 nem o 70).
+- **Busca por nome:** digite parte do nome e aparecem os produtos que contêm o texto.
+- **Atualização automática:** a cada 20 segundos, mas **só enquanto a aba Sacola está aberta e a página da live está visível**. Com outra aba do painel ativa, ou com a página escondida, a extensão não consulta a Shopee.
+- **Se a leitura falhar 3 vezes seguidas**, a atualização automática para. O botão **Atualizar** lê de novo e retoma o automático.
+- **"Lista desatualizada"** quer dizer que a última leitura falhou e o que você vê é a última lista que deu certo. Ela some quando uma leitura nova funciona.
+- **Nesta versão a aba só lê e não altera nada** na sua live. A etiqueta **"No ar"** (qual produto está sendo mostrado) e o botão **Mostrar** vêm na próxima etapa.
 
-Roteiro, com uma live de teste:
+## Conferências na live real
 
-1. **Teste primeiro com um produto que JÁ está favoritado.** Se a extensão errar o coração cheio, ela poderia desfavoritar sem você esperar. Com um produto já favoritado, o erro aparece sem estrago.
-2. Monte um lote de 3 IDs: um que não existe, um já favoritado e um novo. Clique em **Processar lote** e siga a Shopee uma vez por ID.
-3. De volta à live, a extensão **marca sozinha** os produtos na tela de Adicionar Produtos (não precisa clicar em nada). **PARE antes de apertar Confirmar.** Confira se os produtos certos foram marcados e se os status fazem sentido: inexistente = "não achei", já favoritado = "já estava favoritado", novo = "favoritado". Nessa hora os produtos marcados continuam como "favoritado" ou "já estava favoritado" (e não "já estava na sacola"), e o painel mostra "Aguardando seu Confirmar…".
-4. Confira que o aviso de verificação (captcha) **não** aparece numa página normal da Shopee. Se a extensão pausar pedindo "resolva e clique em Continuar" sem haver verificação na tela, o seletor do captcha está largo demais (ele pausaria todo ID): ajuste `captchaMarker` em `src/lib/selectors.js`.
-5. Confirme que o painel aparece em `live.shopee.com.br/pc/live`, inclusive depois de navegar dentro do site (por exemplo, sair da live e voltar). Se ele sumir, recarregue a página e anote o que fez antes.
-6. Se algo divergir, ajuste o seletor (veja "Se a Shopee mudar o layout") e repita o teste.
+Em 2026-11-03 o fluxo do Lote foi testado numa live real e funcionou. Foram confirmados na página real (2026-11-03): a caixa de busca da página inicial da Shopee, o texto do botão Favoritar, a marca do coração cheio, o nome do produto no card da grade de Favoritos e o quadradinho (checkbox) do card.
+
+Ainda faltam estas conferências (itens marcados com `PROBE-PENDING` ou palpites):
+
+1. **Aviso de verificação (captcha):** confira que ele **não** faz a extensão pausar numa página normal da Shopee, e que **faz** pausar numa verificação de verdade. Se pausar pedindo "resolva e clique em Continuar" sem haver verificação na tela, o seletor está largo demais (ele pausaria todo ID): ajuste `captchaMarker` em `src/lib/selectors.js`.
+2. **Fotos da aba Sacola:** o endereço das fotos (`IMG_BASE` em `src/live/bag.js`) é um palpite. Se as fotos não aparecerem na aba Sacola, corrija só essa constante, olhando o endereço de uma foto na página.
+3. **Números da aba Sacola:** confira que os números dos cards batem com os da "Lista de produtos" da Shopee.
+4. **Aba Lote ativa:** confira que, com a aba Lote (e não a Sacola) ativa, a extensão não faz nenhuma chamada nova.
 
 ## Instalação (Chrome, Edge ou Brave)
 
@@ -46,7 +48,7 @@ Depois de mudar qualquer arquivo da extensão, clique em **Recarregar** no card 
 2. Clique em **Processar lote**. A Shopee abre numa aba nova (ou numa janela, veja Configuração).
 3. Na Shopee aparece um aviso "ID k de N: clique na busca". **Clique uma vez na caixa de busca da Shopee** para cada ID. A extensão cola o ID, abre o produto e favorita. O clique é seu de propósito: mantém um ritmo humano e reduz o risco de a Shopee pedir verificação.
 4. Quando o último ID termina, a Shopee se fecha sozinha e você volta para a aba da live.
-5. A extensão **marca sozinha**: abre a tela de Adicionar Produtos, vai em Meus Favoritos e marca cada produto do lote pelo nome. O painel mostra "Aguardando seu Confirmar…". O botão **Marcar na live** só aparece se for preciso tentar de novo (por exemplo, se você fechou a tela de Adicionar Produtos sem confirmar).
+5. A extensão **marca sozinha**: abre a tela de Adicionar Produtos, vai em Meus Favoritos e marca cada produto do lote pelo nome. O painel mostra "Aguardando seu Confirmar…". A Shopee só deixa o bloco "Produtos" abrir com um clique de mouse de verdade; por isso, se o painel mostrar **"Clique no bloco "Produtos" (coluna da esquerda): eu continuo sozinha."**, clique uma vez nesse bloco e a extensão continua. O botão **Marcar na live** só aparece se for preciso tentar de novo (por exemplo, se você fechou a tela de Adicionar Produtos sem confirmar).
 6. **Confira os produtos marcados e clique você mesmo em Confirmar**, na tela da Shopee. Até lá os itens aparecem como "favoritado" ou "já estava favoritado"; depois do Confirmar ficam como "adicionado".
 
 Se você fechar a aba da Shopee no meio, o lote fica guardado. Use o botão **Retomar** no painel (a aba antiga da Shopee, se ainda estiver aberta, é fechada e uma nova é aberta). Se a Shopee pedir verificação (captcha), resolva e clique em **Continuar** no aviso. Se um ID travar, use o botão **Pular este ID** no aviso da Shopee: ele fica como "não achei" e o lote segue (a extensão não clica em nada da página).
@@ -82,7 +84,7 @@ Na aba **Config** do painel: **Abrir a Shopee em** aba (padrão) ou janela separ
 
 ## Se a Shopee mudar o layout
 
-Todos os textos e seletores da página ficam **em um único arquivo**: `src/lib/selectors.js`. Se algum passo deixar de funcionar, ajuste o valor correspondente nesse arquivo (cada linha tem um comentário dizendo para que serve), recarregue a extensão em `chrome://extensions` e recarregue a live. As classes da Shopee têm um sufixo que muda; por isso os seletores usam só o começo do nome, como `[class*="comment-container"]`.
+Todos os textos e seletores da página ficam **em um único arquivo**: `src/lib/selectors.js`. Se algum passo deixar de funcionar, ajuste o valor correspondente nesse arquivo (cada linha tem um comentário dizendo para que serve). A única exceção é o endereço das fotos da aba Sacola, `IMG_BASE`, em `src/live/bag.js`. Depois recarregue a extensão em `chrome://extensions` e recarregue a live. As classes da Shopee têm um sufixo que muda; por isso os seletores usam só o começo do nome, como `[class*="comment-container"]`.
 
 ## Desenvolvimento
 

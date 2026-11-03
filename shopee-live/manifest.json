@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Assistente de Live Shopee",
-  "version": "0.2.0",
-  "description": "Ajuda o apresentador de lives da Shopee Brasil: lê IDs de produto pedidos no chat, favorita na Shopee e marca os produtos na tela de Adicionar Produtos da live, para você confirmar.",
+  "version": "0.3.0",
+  "description": "Ajuda o apresentador de lives da Shopee Brasil: lê IDs de produto pedidos no chat, favorita na Shopee, marca os produtos na tela de Adicionar Produtos da live, para você confirmar, e mostra a sacola da live numerada, com busca.",
   "permissions": ["storage", "tabs"],
   "background": { "service_worker": "src/background.js" },
   "content_scripts": [
@@ -15,7 +15,9 @@
         "src/lib/selectors.js",
         "src/lib/dom.js",
         "src/live/addProducts.js",
-        "src/live/panel.js"
+        "src/live/bag.js",
+        "src/live/panel.js",
+        "src/live/bagTab.js"
       ],
       "run_at": "document_idle"
     },
