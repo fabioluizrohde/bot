@@ -28,7 +28,27 @@ test('texto multilinha com vários usuários, em ordem e sem repetir', () => {
   ]);
 });
 
+// No chat real o nome de quem pediu vem colado no ID, sem espaço (visto na live em 2026-11-03).
+test('ID colado ao nome do autor (sem espaço)', () => {
+  assert.deepStrictEqual(extractIds('kellianegomesdesousaANJ-EGH-KLV'), ['ANJ-EGH-KLV']);
+  assert.deepStrictEqual(extractIds('maria123BYL-BBA-JBR'), ['BYL-BBA-JBR']);
+});
+
+test('seleção de várias linhas do chat, cada ID colado ao seu autor', () => {
+  const texto = [
+    'ApresentadorBaseweb Gráfica DigitalANJ-EGH-KLV',
+    'kellian... entrou!',
+    'kellianegomesdesousaANJ-EGH-KLV',
+    'kellianegomesdesousaZZZ-***-ZZZ',
+    'kellianegomesdesousaZZZ-AAA-SSS',
+    'kellianegomesdesousaBYL-BBA-JBR',
+    'kellianegomesdesousaBQM-AFG-GKM',
+  ].join('\n');
+  assert.deepStrictEqual(extractIds(texto), ['ANJ-EGH-KLV', 'ZZZ-AAA-SSS', 'BYL-BBA-JBR', 'BQM-AFG-GKM']);
+});
+
 test('não reconhece o que não é ID', () => {
+  assert.deepStrictEqual(extractIds('ABC-DEF-GHI-JKL'), []);
   assert.deepStrictEqual(extractIds('quero o 5'), []);
   assert.deepStrictEqual(extractIds('ABC-DEF-GHIJ'), []);
   assert.deepStrictEqual(extractIds('AB-CDE-FGH'), []);

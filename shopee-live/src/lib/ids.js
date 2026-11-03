@@ -6,7 +6,9 @@
 (function (root) {
   const SLA = (root.SLA = root.SLA || {});
 
-  const ID_RE = /(?<![A-Z0-9-])[A-Z]{3}-[A-Z]{3}-[A-Z]{3}(?![A-Z0-9-])/gi;
+  // No chat o nome de quem pediu vem colado no ID ("kellianegomesdesousaANJ-EGH-KLV"), então o ID pode
+  // vir logo depois de letras/números. O que não pode: vir depois de um hífen ou seguido de mais ID.
+  const ID_RE = /(?<!-)[A-Z]{3}-[A-Z]{3}-[A-Z]{3}(?![A-Z0-9-])/gi;
 
   // Devolve os IDs canônicos (maiúsculos), sem repetidos, na ordem em que aparecem.
   function extractIds(text) {
