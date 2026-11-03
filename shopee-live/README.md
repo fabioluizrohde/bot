@@ -26,9 +26,10 @@ Roteiro, com uma live de teste:
 
 1. **Teste primeiro com um produto que JÁ está favoritado.** Se a extensão errar o coração cheio, ela poderia desfavoritar sem você esperar. Com um produto já favoritado, o erro aparece sem estrago.
 2. Monte um lote de 3 IDs: um que não existe, um já favoritado e um novo. Clique em **Processar lote** e siga a Shopee uma vez por ID.
-3. De volta à live, clique em **Marcar na live** e **PARE antes de apertar Confirmar**. Confira se os produtos certos foram marcados e se os status fazem sentido (inexistente = "não achei", já favoritado = "já estava favoritado", novo = "favoritado").
-4. Confirme que o painel aparece em `live.shopee.com.br/pc/live`, inclusive depois de navegar dentro do site (por exemplo, sair da live e voltar). Se ele sumir, recarregue a página e anote o que fez antes.
-5. Se algo divergir, ajuste o seletor (veja "Se a Shopee mudar o layout") e repita o teste.
+3. De volta à live, a extensão **marca sozinha** os produtos na tela de Adicionar Produtos (não precisa clicar em nada). **PARE antes de apertar Confirmar.** Confira se os produtos certos foram marcados e se os status fazem sentido: inexistente = "não achei", já favoritado = "já estava favoritado", novo = "favoritado". Nessa hora os produtos marcados continuam como "favoritado" ou "já estava favoritado" (e não "já estava na sacola"), e o painel mostra "Aguardando seu Confirmar…".
+4. Confira que o aviso de verificação (captcha) **não** aparece numa página normal da Shopee. Se a extensão pausar pedindo "resolva e clique em Continuar" sem haver verificação na tela, o seletor do captcha está largo demais (ele pausaria todo ID): ajuste `captchaMarker` em `src/lib/selectors.js`.
+5. Confirme que o painel aparece em `live.shopee.com.br/pc/live`, inclusive depois de navegar dentro do site (por exemplo, sair da live e voltar). Se ele sumir, recarregue a página e anote o que fez antes.
+6. Se algo divergir, ajuste o seletor (veja "Se a Shopee mudar o layout") e repita o teste.
 
 ## Instalação (Chrome, Edge ou Brave)
 
@@ -45,10 +46,10 @@ Depois de mudar qualquer arquivo da extensão, clique em **Recarregar** no card 
 2. Clique em **Processar lote**. A Shopee abre numa aba nova (ou numa janela, veja Configuração).
 3. Na Shopee aparece um aviso "ID k de N: clique na busca". **Clique uma vez na caixa de busca da Shopee** para cada ID. A extensão cola o ID, abre o produto e favorita. O clique é seu de propósito: mantém um ritmo humano e reduz o risco de a Shopee pedir verificação.
 4. Quando o último ID termina, a Shopee se fecha sozinha e você volta para a aba da live.
-5. No painel, clique em **Marcar na live**. A extensão abre a tela de Adicionar Produtos, vai em Meus Favoritos e marca cada produto do lote pelo nome.
-6. **Confira os produtos marcados e clique você mesmo em Confirmar**, na tela da Shopee. Depois disso os itens ficam como "adicionado".
+5. A extensão **marca sozinha**: abre a tela de Adicionar Produtos, vai em Meus Favoritos e marca cada produto do lote pelo nome. O painel mostra "Aguardando seu Confirmar…". O botão **Marcar na live** só aparece se for preciso tentar de novo (por exemplo, se você fechou a tela de Adicionar Produtos sem confirmar).
+6. **Confira os produtos marcados e clique você mesmo em Confirmar**, na tela da Shopee. Até lá os itens aparecem como "favoritado" ou "já estava favoritado"; depois do Confirmar ficam como "adicionado".
 
-Se você fechar a aba da Shopee no meio, o lote fica guardado. Use o botão **Retomar** no painel. Se a Shopee pedir verificação (captcha), resolva e clique em **Continuar** no aviso.
+Se você fechar a aba da Shopee no meio, o lote fica guardado. Use o botão **Retomar** no painel (a aba antiga da Shopee, se ainda estiver aberta, é fechada e uma nova é aberta). Se a Shopee pedir verificação (captcha), resolva e clique em **Continuar** no aviso. Se um ID travar, use o botão **Pular este ID** no aviso da Shopee: ele fica como "não achei" e o lote segue (a extensão não clica em nada da página).
 
 ## Configuração
 

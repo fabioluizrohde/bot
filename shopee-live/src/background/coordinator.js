@@ -112,6 +112,7 @@
             await storage.set('liveTabId', sender.tab.id);
             await storage.set('liveWindowId', sender.tab.windowId != null ? sender.tab.windowId : null);
           }
+          await closeShopee(); // não deixa a aba/janela antiga aberta (duas abas colando o mesmo ID)
           await openShopee(b.openIn);
           return saveBatch({ ...b, paused: false });
         }

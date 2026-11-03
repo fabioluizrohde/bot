@@ -120,6 +120,21 @@ test('batch:reopen abre a Shopee sem alterar os itens', async () => {
   assert.deepStrictEqual(depois.items, antes.items);
 });
 
+test('batch:reopen fecha a aba da Shopee anterior antes de abrir outra (sem abas duplicadas)', async () => {
+  const { c, calls, store } = await started();
+  await c.handle({ type: 'batch:reopen' }, LIVE);
+  assert.deepStrictEqual(calls.tabsRemove, [100]);
+  assert.strictEqual(calls.tabsCreate.length, 2);
+  assert.strictEqual(store.shopeeTabId, 101);
+});
+
+test('batch:reopen em janela fecha a janela anterior antes de abrir outra', async () => {
+  const { c, calls } = await started('window', ['AAA', 'BBB']);
+  await c.handle({ type: 'batch:reopen' }, LIVE);
+  assert.deepStrictEqual(calls.winRemove, [100]);
+  assert.strictEqual(calls.winCreate.length, 2);
+});
+
 test('batch:setStatus grava e batch:clear apaga', async () => {
   const { c } = await started();
   await c.handle({ type: 'batch:setStatus', id: 'AAA', status: 'adicionado' });
