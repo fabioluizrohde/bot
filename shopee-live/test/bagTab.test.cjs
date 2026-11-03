@@ -53,7 +53,8 @@ test('renderBagTab: busca sem resultado', () => {
 test('renderBagTab: item esgotado/removido fica apagado; foto some se falhar', () => {
   const html = bagTab.renderBagTab(base({ itens: [card(1, { outOfStock: true }), card(2, { removed: true }), card(3)], total: 3 }));
   assert.strictEqual(count(html, 'apagado'), 2);
-  assert.ok(html.includes("onerror=\"this.style.display='none'\""));
+  assert.ok(!html.includes('onerror')); // sem código embutido: a página pode bloquear (CSP)
+  assert.ok(html.includes('data-img="img-1"'));
   assert.ok(html.includes('img-1'));
 });
 
@@ -63,7 +64,7 @@ test('renderBagTab: preço antigo riscado', () => {
 });
 
 test('renderBagTab: desatualizada, carregando e erro', () => {
-  assert.ok(bagTab.renderBagTab(base({ desatualizada: true })).includes('Lista desatualizada'));
+  assert.ok(bagTab.renderBagTab(base({ itens: [card(1)], total: 1, desatualizada: true })).includes('Lista desatualizada'));
   assert.ok(bagTab.renderBagTab(base({ status: 'carregando' })).includes('Lendo a sacola…'));
   const e = bagTab.renderBagTab(base({ status: 'erro', erro: 'sem conexão' }));
   assert.ok(e.includes('Não consegui ler a sacola (sem conexão)'));
@@ -100,4 +101,88 @@ test('nextState: erro mantém a lista e soma falhas; três seguidas', () => {
   s = bagTab.nextState(s, { ok: false, reason: 'formato' });
   assert.strictEqual(s.erro, 'resposta inesperada');
   assert.strictEqual(s.falhas, 3);
+});
+
+// ---------- Revisão final: fotos que falharam (Importante 3) ----------
+
+test('renderBagTab: foto que já falhou não é pedida de novo (Set ou lista)', () => {
+  const itens = [card(1), card(2)];
+  for (const fotosComErro of [new Set(['img-1']), ['img-1']]) {
+    const html = bagTab.renderBagTab(base({ itens, total: 2, fotosComErro }));
+    assert.ok(!html.includes('img-1'));
+    assert.ok(html.includes('data-img="img-2"'));
+    assert.strictEqual(count(html, '<img'), 1);
+  }
+  assert.strictEqual(count(bagTab.renderBagTab(base({ itens, total: 2 })), '<img'), 2);
+});
+
+test('markImageFailed: guarda o código da foto que falhou', () => {
+  bagTab.markImageFailed('img-77');
+  bagTab.markImageFailed('');
+  bagTab.markImageFailed(null);
+  assert.ok(bagTab.failedImages().includes('img-77'));
+  assert.ok(!bagTab.failedImages().includes(''));
+  const html = bagTab.renderBagTab(base({ itens: [card(77)], total: 1, fotosComErro: bagTab.failedImages() }));
+  assert.ok(!html.includes('<img'));
+});
+
+// ---------- Revisão final: sessão lida a cada leitura (Importante 4) ----------
+
+test('sessionStep: sem sessão, mesma sessão, outra sessão', () => {
+  assert.deepStrictEqual(bagTab.sessionStep('https://live.shopee.com.br/pc/live', null), { sessionId: null, limpar: false });
+  assert.deepStrictEqual(bagTab.sessionStep('https://live.shopee.com.br/pc/live', '5'), { sessionId: null, limpar: false });
+  assert.deepStrictEqual(bagTab.sessionStep('https://live.shopee.com.br/pc/live?session=5', null), { sessionId: '5', limpar: false });
+  assert.deepStrictEqual(bagTab.sessionStep('https://live.shopee.com.br/pc/live?session=5', '5'), { sessionId: '5', limpar: false });
+  assert.deepStrictEqual(bagTab.sessionStep('https://live.shopee.com.br/pc/live?session=6', '5'), { sessionId: '6', limpar: true });
+});
+
+test('noSessionState: mensagem própria, sem lista e sem somar falha', () => {
+  const prev = { ...bagTab.initialState(), status: 'ok', itens: [card(1)], total: 1, maxItems: 100, falhas: 1, query: 'q', desatualizada: true };
+  const s = bagTab.noSessionState(prev);
+  assert.strictEqual(s.status, 'sem_sessao');
+  assert.deepStrictEqual(s.itens, []);
+  assert.strictEqual(s.total, 0);
+  assert.strictEqual(s.desatualizada, false);
+  assert.strictEqual(s.falhas, 1);
+  assert.strictEqual(s.query, 'q');
+  const html = bagTab.renderBagTab(s);
+  assert.ok(html.includes('<p class="warn">Abra a página da live (sem sessão na URL).</p>'));
+  assert.ok(!html.includes('Não consegui ler a sacola'));
+  assert.ok(!html.includes('<b>'));
+  assert.ok(!html.includes('Sacola vazia.'));
+  assert.ok(html.includes('data-act="bag-refresh"'));
+});
+
+test('clearForNewSession: tira a lista da live anterior e mantém busca e falhas', () => {
+  const prev = { ...bagTab.initialState(), status: 'ok', itens: [card(1)], total: 1, maxItems: 100, falhas: 2, query: 'q', desatualizada: true, erro: 'x' };
+  const s = bagTab.clearForNewSession(prev);
+  assert.deepStrictEqual(
+    { status: s.status, itens: s.itens, total: s.total, max: s.maxItems, des: s.desatualizada, erro: s.erro, falhas: s.falhas, query: s.query },
+    { status: 'carregando', itens: [], total: 0, max: 0, des: false, erro: '', falhas: 2, query: 'q' },
+  );
+});
+
+test('sessão nova que sempre falha ainda para a atualização em MAX_FALHAS', () => {
+  let s = bagTab.nextState(bagTab.initialState(), { ok: true, items: [card(1)], total: 1, maxItems: 100 });
+  let idDaLista = '5';
+  for (let i = 0; i < 10 && bagTab.shouldPoll({ ativa: true, escondida: false, falhas: s.falhas }); i++) {
+    const p = bagTab.sessionStep('https://live.shopee.com.br/pc/live?session=6', idDaLista);
+    if (p.limpar) { s = bagTab.clearForNewSession(s); idDaLista = null; }
+    s = bagTab.nextState(s, { ok: false, reason: 'rede' });
+  }
+  assert.strictEqual(s.falhas, bagTab.MAX_FALHAS);
+  assert.deepStrictEqual(s.itens, []);
+});
+
+// ---------- Revisão final: primeira leitura falhou (menor) ----------
+
+test('renderBagTab: falha sem lista mostra só o erro (sem contador e sem "desatualizada")', () => {
+  const s = bagTab.nextState(bagTab.initialState(), { ok: false, reason: 'rede' });
+  const html = bagTab.renderBagTab({ ...s, maxItems: 0 });
+  assert.ok(html.includes('Não consegui ler a sacola (sem conexão)'));
+  assert.ok(!html.includes('<b>'));
+  assert.ok(!html.includes('Lista desatualizada'));
+  // com lista, o contador e o aviso continuam
+  const c = bagTab.renderBagTab(bagTab.nextState({ ...bagTab.initialState(), status: 'ok', itens: [card(1)], total: 1, maxItems: 100 }, { ok: false, reason: 'rede' }));
+  assert.ok(c.includes('<b>1 de 100</b>') && c.includes('Lista desatualizada'));
 });

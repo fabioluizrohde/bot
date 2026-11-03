@@ -230,3 +230,10 @@ test('readBag: para em 20 páginas com has_more sempre true', async () => {
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.items.length, 200);
 });
+
+test('normalizeBag ignora itens sem número (id) válido, em vez de mostrar NaN', () => {
+  const ruins = [{ name: 'sem id' }, { id: null }, { id: '' }, { id: true }, { id: 'abc' }, { id: NaN }, { id: Infinity }, { id: '  ' }];
+  const r = bag.normalizeBag({ err_code: 0, data: { items: [...ruins, { id: 4, name: 'Ok' }, { id: '2', name: 'Texto' }] } });
+  assert.deepStrictEqual(r.items.map((c) => c.n), [2, 4]);
+  assert.ok(r.items.every((c) => Number.isFinite(c.n)));
+});

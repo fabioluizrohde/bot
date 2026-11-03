@@ -27,10 +27,36 @@
     return { ...prev, status: 'erro', desatualizada: true, erro: ERROS[reason] || ERROS.formato, falhas: (prev.falhas || 0) + 1 };
   }
 
-  function cardHtml(c) {
+  // Sessão sem "?session=" na URL: mensagem própria, sem lista e sem contar como falha de leitura.
+  function noSessionState(prev) {
+    return { ...prev, status: 'sem_sessao', itens: [], total: 0, maxItems: 0, desatualizada: false, erro: '' };
+  }
+
+  // Outra live na URL: some a lista da anterior antes de ler (falhas e busca continuam).
+  function clearForNewSession(prev) {
+    return { ...prev, status: 'carregando', itens: [], total: 0, maxItems: 0, desatualizada: false, erro: '' };
+  }
+
+  // Lê a sessão da URL a cada leitura. "limpar": a lista na tela é de outra sessão.
+  function sessionStep(href, idDaLista) {
+    const sessionId = SLA.bag.sessionIdFromHref(href);
+    return { sessionId, limpar: !!sessionId && !!idDaLista && sessionId !== idDaLista };
+  }
+
+  // Fotos que falharam: não são pedidas de novo nos próximos desenhos.
+  const fotosQueFalharam = new Set();
+  function markImageFailed(code) {
+    if (code) fotosQueFalharam.add(String(code));
+  }
+  function failedImages() {
+    return [...fotosQueFalharam];
+  }
+
+  function cardHtml(c, comErro) {
     const apagado = c.outOfStock || c.removed ? ' apagado' : '';
-    const foto = c.image
-      ? `<img src="${esc(SLA.bag.imageUrl(c.image))}" alt="" onerror="this.style.display='none'">`
+    // Sem onerror embutido (a página pode bloquear): o painel esconde a foto que falhar.
+    const foto = c.image && !comErro.has(c.image)
+      ? `<img src="${esc(SLA.bag.imageUrl(c.image))}" alt="" data-img="${esc(c.image)}">`
       : '';
     const antes = c.priceBefore ? ` <s>${esc(c.priceBefore)}</s>` : '';
     const aviso = c.removed ? ' <span class="mut">(removido)</span>' : c.outOfStock ? ' <span class="mut">(esgotado)</span>' : '';
@@ -38,10 +64,13 @@
   }
 
   function renderBagTab(m) {
+    // Sem lista e com erro (ou sem sessão), o contador "0" e o "desatualizada" só confundem.
+    const soMensagem = !m.itens.length && (m.status === 'erro' || m.status === 'sem_sessao');
     const contador = m.maxItems ? `${m.total} de ${m.maxItems}` : `${m.total}`;
-    let h = `<div class="row"><b>${esc(contador)}</b><button data-act="bag-refresh">Atualizar</button></div>`;
+    let h = `<div class="row">${soMensagem ? '' : `<b>${esc(contador)}</b>`}<button data-act="bag-refresh">Atualizar</button></div>`;
     h += `<input class="busca" data-act="bag-q" data-focus-key="bag-q" placeholder="Buscar por nome ou número" value="${esc(m.query || '')}">`;
-    if (m.desatualizada) h += '<p class="warn">Lista desatualizada</p>';
+    if (m.status === 'sem_sessao') return h + '<p class="warn">Abra a página da live (sem sessão na URL).</p>';
+    if (m.desatualizada && !soMensagem) h += '<p class="warn">Lista desatualizada</p>';
     if (m.status === 'erro') h += `<p class="warn">Não consegui ler a sacola (${esc(m.erro)}).</p>`;
     if (m.status === 'carregando' && !m.itens.length) return h + '<p class="mut">Lendo a sacola…</p>';
     if (m.status === 'idle') return h;
@@ -50,38 +79,56 @@
     }
     const lista = SLA.bag.filterBag(m.itens, m.query);
     if (!lista.length) return h + '<p class="mut">Nenhum produto encontrado.</p>';
-    return h + lista.map(cardHtml).join('');
+    const comErro = new Set(m.fotosComErro || []);
+    return h + lista.map((c) => cardHtml(c, comErro)).join('');
   }
 
   // ---- efeitos (sem teste automático) ----
   function init() {
+    // A aba aparece sempre na página da live; a sessão é lida da URL a cada leitura
+    // (a página pode trocar de live sem recarregar).
     if (!/^\/pc\/live/.test(location.pathname)) return;
-    const sessionId = SLA.bag.sessionIdFromHref(location.href);
-    if (!sessionId || !SLA.panel) return;
+    if (!SLA.panel) return;
     let state = initialState();
     let timer = null;
     let lendo = false;
     let ultimaLeitura = 0;
+    let idDaLista = null; // sessão da lista que está na tela
 
     async function ler() {
       if (lendo) return;
+      const passo = sessionStep(location.href, idDaLista);
+      if (!passo.sessionId) { // sem sessão: só a mensagem, sem chamada à Shopee
+        state = noSessionState(state);
+        idDaLista = null;
+        try { SLA.panel.redraw(); } catch (e) { /* painel fora do ar */ }
+        return;
+      }
+      if (passo.limpar) { state = clearForNewSession(state); idDaLista = null; SLA.panel.redraw(); }
       lendo = true;
-      if (state.status === 'idle') { state = { ...state, status: 'carregando' }; SLA.panel.redraw(); }
+      if (state.status === 'idle' || state.status === 'sem_sessao') { state = { ...state, status: 'carregando' }; SLA.panel.redraw(); }
+      let descartada = false;
       try {
-        const r = await SLA.bag.readBag(sessionId);
-        state = nextState(state, r);
-        ultimaLeitura = Date.now();
+        const r = await SLA.bag.readBag(passo.sessionId);
+        if (SLA.bag.sessionIdFromHref(location.href) !== passo.sessionId) {
+          descartada = true; // a URL mudou de live durante a leitura: o resultado não vale mais
+        } else {
+          state = nextState(state, r);
+          if (r && r.ok) idDaLista = passo.sessionId;
+          ultimaLeitura = Date.now();
+        }
       } catch (e) {
         state = nextState(state, { ok: false, reason: 'formato' });
       } finally {
         lendo = false;
       }
+      if (descartada) return ler(); // lê de novo já com a sessão nova (limpa a lista antiga)
       try { SLA.panel.redraw(); } catch (e) { /* painel fora do ar */ }
     }
 
     function parar() { if (timer) { clearInterval(timer); timer = null; } }
 
-    function render() { return renderBagTab(state); }
+    function render() { return renderBagTab({ ...state, fotosComErro: fotosQueFalharam }); }
 
     SLA.panel.registerTab('sacola', 'Sacola', render, {
       actions: {
@@ -103,7 +150,10 @@
     });
   }
 
-  SLA.bagTab = { POLL_MS, MAX_FALHAS, FRESCO_MS, initialState, renderBagTab, shouldPoll, nextState, init };
+  SLA.bagTab = {
+    POLL_MS, MAX_FALHAS, FRESCO_MS, initialState, renderBagTab, shouldPoll, nextState,
+    noSessionState, clearForNewSession, sessionStep, markImageFailed, failedImages, init,
+  };
   if (typeof module !== 'undefined' && module.exports) module.exports = SLA.bagTab;
 
   if (typeof document !== 'undefined' && typeof chrome !== 'undefined' && chrome.runtime) {

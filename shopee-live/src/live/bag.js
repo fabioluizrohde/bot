@@ -60,12 +60,19 @@
     };
   }
 
+  // O número do produto na sacola (id) precisa ser um número de verdade (ou texto numérico).
+  function hasValidId(it) {
+    const id = it.id;
+    if (typeof id === 'number') return Number.isFinite(id);
+    return typeof id === 'string' && id.trim() !== '' && Number.isFinite(Number(id));
+  }
+
   function normalizeBag(json) {
     if (!json || json.err_code !== 0) return null;
     const data = json.data;
     if (!data || !Array.isArray(data.items)) return null;
     const items = data.items
-      .filter((it) => it && typeof it === 'object')
+      .filter((it) => it && typeof it === 'object' && hasValidId(it)) // sem número válido: ignora (não mostra "NaN")
       .map(toCard).sort((a, b) => a.n - b.n);
     return {
       items,

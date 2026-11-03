@@ -428,6 +428,17 @@
       const el = e.target && e.target.closest && e.target.closest('[data-act]');
       if (el && !BUILTIN_ACTS.includes(el.dataset.act)) runExtra(el, e);
     });
+    // Foto que não carregou: some, e a aba Sacola não a pede de novo. Fica aqui (e não num
+    // onerror embutido no HTML) porque a página da Shopee pode bloquear código embutido.
+    shadow.addEventListener('error', (e) => {
+      const img = e.target;
+      if (!img || img.tagName !== 'IMG') return;
+      img.style.display = 'none';
+      try {
+        const code = img.dataset && img.dataset.img;
+        if (code && SLA.bagTab && typeof SLA.bagTab.markImageFailed === 'function') SLA.bagTab.markImageFailed(code);
+      } catch (err) { console.error('[SLA] registro de foto com erro falhou', err); }
+    }, true);
     shadow.addEventListener('change', (e) => {
       if (e.target.dataset && e.target.dataset.act === 'openIn') onAction(e.target).catch(() => {});
     });
