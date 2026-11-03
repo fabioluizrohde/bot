@@ -71,10 +71,14 @@
   }
 
   // Nome do produto só quando o título mudou desde o início da busca (senão pode ser o do
-  // produto anterior, ainda na tela). '' = nome desconhecido.
+  // produto anterior, ainda na tela). Título genérico do site ("Shopee Brasil", comum enquanto a
+  // página carrega) também não vale. '' = nome desconhecido.
   function nameFromTitles(startTitle, currentTitle) {
     if (startTitle && String(currentTitle || '') === String(startTitle)) return '';
-    return cleanProductName(currentTitle);
+    const nome = cleanProductName(currentTitle);
+    if (!nome || /^shopee(\s+brasil)?$/i.test(nome)) return '';
+    if (startTitle && nome === cleanProductName(startTitle)) return '';
+    return nome;
   }
 
   // Só clica no coração se a URL é de um produto novo E o título já confirma a página nova.
@@ -178,6 +182,11 @@
 
   // "Pular este ID": registra "não achei" para o ID atual. Não clica em nada da página.
   async function pular(id) {
+    const atual = await send({ type: 'hand:next' });
+    if (!atual || atual.id !== id) { // o ID já foi resolvido: não sobrescreve o resultado
+      refresh().catch(() => {});
+      return;
+    }
     pulados.add(id);
     clearPending();
     hideNotice();

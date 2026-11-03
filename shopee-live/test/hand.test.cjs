@@ -98,6 +98,13 @@ test('nameFromTitles: só aceita o nome quando o título mudou', () => {
   assert.strictEqual(H.nameFromTitles(undefined, 'Produto Dois | Shopee Brasil'), 'Produto Dois');
 });
 
+test('nameFromTitles: título genérico do site ou o mesmo nome com outro sufixo não confirmam a página nova', () => {
+  assert.strictEqual(H.nameFromTitles('Produto Um | Shopee Brasil', 'Shopee Brasil'), '');
+  assert.strictEqual(H.nameFromTitles('Produto Um | Shopee Brasil', 'Shopee'), '');
+  assert.strictEqual(H.nameFromTitles('Produto Um | Shopee Brasil', 'Produto Um'), '');
+  assert.strictEqual(H.nameFromTitles('Shopee Brasil', 'Produto Dois | Shopee Brasil'), 'Produto Dois');
+});
+
 test('canClickHeart: só com produto novo pela URL E título confirmado', () => {
   assert.strictEqual(H.canClickHeart({ startUrl: P1, currentUrl: P2, name: 'Produto Dois' }), true);
   assert.strictEqual(H.canClickHeart({ startUrl: HOME, currentUrl: P2, name: 'Produto Dois' }), true);
