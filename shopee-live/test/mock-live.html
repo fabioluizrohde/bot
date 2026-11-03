@@ -30,7 +30,7 @@
   .grid-scroll_z1x2c { height: 300px; overflow-y: auto; border: 1px solid #eee; margin-top: 8px; }
   .grid_l9k8j { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 8px; }
   .card_h7g6f { display: block; border: 1px solid #ddd; border-radius: 6px; padding: 6px; height: 96px; box-sizing: border-box; cursor: pointer; }
-  .card_h7g6f .name_d5s4a { margin-top: 6px; font-size: 12px; }
+  .card_h7g6f .productCardName_d5s4a { margin-top: 6px; font-size: 12px; }
   .foot_w3e2q { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
 </style>
 </head>
@@ -66,13 +66,14 @@
 <!-- Modal "Adicionar Produtos" -->
 <div class="shopee-react-modal" id="modalAdd">
   <div><b>Adicionar Produtos</b></div>
-  <div class="tabs_m4n5b" id="abas">
-    <div class="tab_v6c7x" data-tab="fav" tabindex="0">Meus Favoritos</div>
-    <div class="tab_v6c7x on" data-tab="loja" tabindex="0">Minha Loja</div>
-    <div class="tab_v6c7x" data-tab="rec" tabindex="0">Recente</div>
-    <div class="tab_v6c7x" data-tab="conj" tabindex="0">Adicionar conjunto de produtos</div>
-    <div class="tab_v6c7x" data-tab="url" tabindex="0">Importar via URL</div>
-  </div>
+  <!-- Na página real as abas são <li> sem tabindex (conferido em 2026-11-03) -->
+  <ul class="tabs_m4n5b" id="abas" style="list-style:none;margin:0;padding:0">
+    <li class="tab_v6c7x" data-tab="fav">Meus Favoritos</li>
+    <li class="tab_v6c7x on" data-tab="loja">Minha Loja</li>
+    <li class="tab_v6c7x" data-tab="rec">Recente</li>
+    <li class="tab_v6c7x" data-tab="conj">Adicionar conjunto de produtos</li>
+    <li class="tab_v6c7x" data-tab="url">Importar via URL</li>
+  </ul>
   <input type="text" id="busca" placeholder="Pesquisar produto" style="width:100%;box-sizing:border-box">
   <div id="painelOutras">Conteúdo desta aba não é usado nos testes.</div>
   <div class="grid-scroll_z1x2c" id="scrollFav" style="display:none"><div class="grid_l9k8j" id="grade"></div></div>
@@ -150,7 +151,7 @@
       cb.type = 'checkbox';
       cb.checked = !!f.inBag;
       const nome = document.createElement('div');
-      nome.className = 'name_d5s4a';
+      nome.className = 'productCardName_d5s4a';
       nome.textContent = trunca(f.name); // a página real corta o nome com reticências
       card.append(cb, nome);
       grade.appendChild(card);

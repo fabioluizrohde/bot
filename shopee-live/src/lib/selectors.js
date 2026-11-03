@@ -17,8 +17,9 @@
     confirmText: 'Confirmar',
 
     // --- Palpites, a confirmar ---
-    gridCardName: '[class*="name"]', // PROBE-PENDING: nome do produto no card da grade de favoritos
-    gridCheckbox: 'input[type="checkbox"]', // PROBE-PENDING: checkbox do card (já na sacola vem marcado)
+    gridCardName: '[class*="productCardName"]', // conferido em 2026-11-03: nome do produto no card (div.productCardName_xxxxx)
+    // conferido em 2026-11-03: o input fica dentro de label.eds-react-checkbox; produto já na sacola vem marcado E desativado
+    gridCheckbox: 'input[type="checkbox"]',
     shopeeSearchInput: 'input.shopee-searchbar-input__input', // conferido na página real em 2026-11-03: acha 1 campo na home
     favoriteButton: 'Favoritar', // conferido em 2026-11-03: texto "Favoritar (N)" dentro de um button; o rótulo não muda ao favoritar
     // Coração cheio = path com fill vermelho; vazio = path com fill="none" (conferido na página real em 2026-11-03).

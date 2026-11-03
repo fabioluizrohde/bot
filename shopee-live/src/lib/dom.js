@@ -81,7 +81,8 @@
   // Acha o menor elemento clicável dentro de "root" cujo texto casa com "pattern".
   function findClickableByText(root, pattern) {
     const re = pattern instanceof RegExp ? pattern : new RegExp('^\\s*' + escapeRe(pattern) + '\\s*$', 'i');
-    const pool = [...root.querySelectorAll(CLICKABLE + ', span, div')].filter(
+    // "li": as abas do modal "Adicionar Produtos" (Meus Favoritos etc.) são itens de lista, sem tabindex.
+    const pool = [...root.querySelectorAll(CLICKABLE + ', span, div, li')].filter(
       (e) => visible(e) && text(e).length < 40 && re.test(text(e))
     );
     if (!pool.length) return null;

@@ -3,6 +3,10 @@
 (function (root) {
   const SLA = (root.SLA = root.SLA || {});
 
+  const WAIT_TILE_MS = 2500; // espera pela janelinha depois do clique simulado no bloco "Produtos"
+  const WAIT_USER_MS = 120000; // espera pelo clique do apresentador no bloco "Produtos"
+  const MSG_CLIQUE_PRODUTOS = 'Clique no bloco "Produtos" (coluna da esquerda): eu continuo sozinha.';
+
   // ---------- Funções puras (testadas) ----------
 
   // cards: [{name, checked, ...}]. Devolve {status, card}: ambíguo ou nenhum -> 'conferir'.
@@ -95,9 +99,12 @@
 
   // Abre Produtos > Lista de produtos > Adicionar produtos relacionados > Meus Favoritos.
   // Reconhece passos já abertos (o popover Produtos alterna a cada clique).
-  async function openFavorites() {
+  // opts.onWaitUser(texto): chamado quando a página não aceita o clique simulado no bloco "Produtos"
+  // (conferido em 2026-11-03: só abre com clique real); o apresentador clica e a extensão continua.
+  async function openFavorites(opts) {
     const d = D();
     const s = S();
+    const o = opts || {};
     const fav = () => modalWith(s.favoritesTabText);
     const related = () => modalWith(s.addRelatedText);
 
@@ -108,10 +115,14 @@
           const tile = d.findClickableByText(document, s.toolsProducts);
           if (!tile) throw new Error('Não consegui abrir Produtos: bloco não encontrado na página');
           if (isDisabled(tile)) throw new Error('A live parece encerrada (o bloco Produtos está desativado)');
-          d.realClick(tile);
+          d.realClick(tile); // tentativa simulada (a página costuma exigir clique real)
         }
-        const lb = await d.waitFor(listBtn, 6000);
-        if (!lb) throw new Error('Não consegui abrir a Lista de produtos');
+        let lb = await d.waitFor(listBtn, WAIT_TILE_MS);
+        if (!lb) {
+          if (typeof o.onWaitUser === 'function') o.onWaitUser(MSG_CLIQUE_PRODUTOS);
+          lb = await d.waitFor(listBtn, WAIT_USER_MS);
+        }
+        if (!lb) throw new Error('Não consegui abrir a Lista de produtos: clique no bloco "Produtos" e tente de novo');
         d.realClick(lb);
         if (!(await d.waitFor(related, 6000))) throw new Error('Não consegui abrir a lista de produtos da live');
       }
@@ -136,9 +147,9 @@
     return modal;
   }
 
-  async function markFavorites(items) {
+  async function markFavorites(items, opts) {
     const d = D();
-    const modal = await openFavorites();
+    const modal = await openFavorites(opts);
     const scroller = findScroller(modal);
 
     // Uma passada pela grade inteira, juntando os cards por NOME (nó do DOM pode ser reciclado).

@@ -206,7 +206,9 @@
     state.aviso = '';
     draw();
     try {
-      const { marcados, updates } = planMarkResults(await add.markFavorites(items), state.marcados);
+      // Se a página não aceitar o clique simulado no bloco "Produtos", pede o clique ao apresentador.
+      const pedir = (texto) => { state.aviso = texto; draw(); };
+      const { marcados, updates } = planMarkResults(await add.markFavorites(items, { onWaitUser: pedir }), state.marcados);
       for (const r of updates) {
         const nb = await send({ type: 'batch:setStatus', id: r.id, status: r.status });
         if (nb) state.batch = nb;
@@ -238,7 +240,9 @@
         );
         state.stopWatch = parar;
       }
-      if (marcados.length) state.aviso = `${marcados.length} marcados — confira e clique em Confirmar`;
+      state.aviso = marcados.length
+        ? `${marcados.length} marcados — confira e clique em Confirmar`
+        : 'Nenhum produto novo para marcar (os do lote já estavam na sacola ou precisam de conferência).';
     } catch (e) {
       state.aviso = 'Não consegui marcar na live: ' + ((e && e.message) || e);
     } finally {
