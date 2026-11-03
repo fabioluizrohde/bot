@@ -32,6 +32,8 @@ Ainda faltam estas conferências (itens marcados com `PROBE-PENDING` ou palpites
 2. **Fotos da aba Sacola:** o endereço das fotos (`IMG_BASE` em `src/live/bag.js`) é um palpite. Se as fotos não aparecerem na aba Sacola, corrija só essa constante, olhando o endereço de uma foto na página.
 3. **Números da aba Sacola:** confira que os números dos cards batem com os da "Lista de produtos" da Shopee.
 4. **Aba Lote ativa:** confira que, com a aba Lote (e não a Sacola) ativa, a extensão não faz nenhuma chamada nova.
+5. **Preços da aba Sacola:** confira que os preços dos cartões batem com os da "Lista de produtos" da Shopee.
+6. **Busca da aba Sacola:** confira que digitar na busca da aba Sacola não aciona atalhos de teclado da página da live.
 
 ## Instalação (Chrome, Edge ou Brave)
 
