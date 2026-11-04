@@ -314,6 +314,7 @@
     .tile.noar::after{content:"No ar";position:absolute;left:0;right:0;bottom:0;background:#ee4d2d;color:#fff;font-size:11px;line-height:16px;text-align:center}
     .tile.apagado{opacity:.45;cursor:default}
     .tile.trocando{opacity:.6}
+    .tile.desligado{opacity:.45;filter:grayscale(1);cursor:not-allowed}
     .modos{display:flex;gap:6px;margin:6px 0}
     .modos button{flex:1;border:1px solid #ccc;border-radius:4px;background:#fff}
     .modos button.on{background:#ee4d2d;border-color:#ee4d2d;color:#fff}

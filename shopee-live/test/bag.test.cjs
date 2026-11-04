@@ -460,3 +460,13 @@ test('showItem: ignora resposta de outro id, origem, fonte ou janela', async () 
   w.answer(boa);
   assert.deepStrictEqual(await p, { ok: true });
 });
+
+// ---------- Revisão final da parte 1: tempo de espera do Mostrar (menor 3) ----------
+
+test('SHOW_TIMEOUT_MS: 20 s, maior que os 15 s do pedido na página (pageBridge.js)', () => {
+  assert.strictEqual(bag.SHOW_TIMEOUT_MS, 20000);
+  const fs = require('node:fs');
+  const ponte = fs.readFileSync(require('node:path').join(__dirname, '../src/live/pageBridge.js'), 'utf8');
+  const xhr = Number((ponte.match(/\.timeout\s*=\s*(\d+)/) || [])[1]);
+  assert.ok(xhr > 0 && bag.SHOW_TIMEOUT_MS > xhr, `xhr=${xhr}`);
+});

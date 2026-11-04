@@ -263,3 +263,67 @@ test('avisoDeErro: resultado sem motivo vira "erro"', () => {
 test('AVISO_DESLIGADO: texto fixo', () => {
   assert.strictEqual(bagTab.AVISO_DESLIGADO, 'O Mostrar foi desligado nesta live após 2 erros. Use a tela da Shopee.');
 });
+
+// ---------- Revisão final da parte 1: troca de live sem recarregar (Importante 2) ----------
+
+for (const nome of ['clearForNewSession', 'noSessionState']) {
+  test(`${nome}: "No ar", "trocando" e aviso de erro não passam para outra live`, () => {
+    const prev = { ...bagTab.initialState(), status: 'ok', itens: [card(5)], total: 1, noAr: 5, trocando: true, aviso: 'Não consegui trocar o produto (rede).' };
+    const s = bagTab[nome](prev);
+    assert.strictEqual(s.noAr, null);
+    assert.strictEqual(s.trocando, false);
+    assert.strictEqual(s.aviso, '');
+    // mesma lista de produtos na live nova: nada marcado "No ar"
+    assert.ok(!bagTab.renderBagTab({ ...s, status: 'ok', itens: [card(5)], total: 1 }).includes('noar'));
+  });
+
+  test(`${nome}: aviso de Mostrar desligado continua (a trava vale até recarregar a página)`, () => {
+    const prev = { ...bagTab.initialState(), noAr: 5, aviso: bagTab.AVISO_DESLIGADO };
+    const s = bagTab[nome](prev);
+    assert.strictEqual(s.aviso, bagTab.AVISO_DESLIGADO);
+    assert.strictEqual(s.noAr, null);
+  });
+}
+
+// ---------- Revisão final da parte 1: Mostrar desligado aparece nos tiles (menor 4) ----------
+
+test('renderBagTab: Mostrar desligado deixa todos os tiles desligados, com classe e explicação', () => {
+  const html = bagTab.renderBagTab(base({ itens: [card(1), card(2)], total: 2, desligado: true }));
+  const tiles = html.match(/<button class="tile[^>]*>/g);
+  assert.strictEqual(tiles.length, 2);
+  for (const t of tiles) {
+    assert.ok(/class="tile[^"]* desligado"/.test(t), t);
+    assert.ok(t.includes(' disabled'), t);
+    assert.ok(t.includes('Mostrar desligado nesta live'), t);
+  }
+  // nome e preço continuam no title
+  assert.ok(html.includes('title="Produto 1 — R$10,00 · Mostrar desligado nesta live"'));
+});
+
+test('renderBagTab: sem desligado, nada muda nos tiles', () => {
+  const html = bagTab.renderBagTab(base({ itens: [card(1)], total: 1, desligado: false }));
+  assert.ok(!html.includes('desligado'));
+  assert.ok(!/<button class="tile[^>]*disabled/.test(html));
+});
+
+// ---------- Revisão final da parte 1: tile achado pelo itemId (menor 6) ----------
+
+test('renderBagTab: todo tile leva data-item com o itemId (escapado); sem itemId fica vazio', () => {
+  const html = bagTab.renderBagTab(base({ itens: [card(1, { itemId: 9001 }), card(2, { itemId: '7"<' }), card(3, { itemId: null })], total: 3 }));
+  assert.ok(/data-n="1" data-item="9001"/.test(html));
+  assert.ok(html.includes('data-item="7&quot;&lt;"'));
+  assert.ok(/data-n="3" data-item=""/.test(html));
+  assert.ok(!html.includes('data-item="null"'));
+});
+
+test('cardByItemId: acha pelo itemId comparado como texto, nunca pelo número do tile', () => {
+  const itens = [card(1, { itemId: 999 }), card(2, { itemId: '1000' }), card(3, { itemId: null })];
+  assert.strictEqual(bagTab.cardByItemId(itens, '999'), itens[0]);
+  assert.strictEqual(bagTab.cardByItemId(itens, 999), itens[0]);
+  assert.strictEqual(bagTab.cardByItemId(itens, '1000'), itens[1]);
+  assert.strictEqual(bagTab.cardByItemId(itens, '1'), null); // n=1 não conta
+  assert.strictEqual(bagTab.cardByItemId(itens, '3'), null);
+  for (const v of [undefined, null, '', 'null', 'undefined']) assert.strictEqual(bagTab.cardByItemId(itens, v), null, String(v));
+  assert.strictEqual(bagTab.cardByItemId(null, '999'), null);
+  assert.strictEqual(bagTab.cardByItemId([], '999'), null);
+});

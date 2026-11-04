@@ -43,14 +43,28 @@
     return { ...prev, status: 'erro', desatualizada: true, erro: erroTexto(reason, r && r.detail), falhas: (prev.falhas || 0) + 1 };
   }
 
+  // O que é da live anterior e não pode passar para outra: "No ar", "trocando" e avisos de erro.
+  // Fica só o aviso de Mostrar desligado (a trava vale até recarregar a página, não por live).
+  function semRestosDaLive(prev) {
+    return { noAr: null, trocando: false, aviso: prev && prev.aviso === AVISO_DESLIGADO ? AVISO_DESLIGADO : '' };
+  }
+
   // Sessão sem "?session=" na URL: mensagem própria, sem lista e sem contar como falha de leitura.
   function noSessionState(prev) {
-    return { ...prev, status: 'sem_sessao', itens: [], total: 0, maxItems: 0, desatualizada: false, erro: '' };
+    return { ...prev, status: 'sem_sessao', itens: [], total: 0, maxItems: 0, desatualizada: false, erro: '', ...semRestosDaLive(prev) };
   }
 
   // Outra live na URL: some a lista da anterior antes de ler (falhas e busca continuam).
   function clearForNewSession(prev) {
-    return { ...prev, status: 'carregando', itens: [], total: 0, maxItems: 0, desatualizada: false, erro: '' };
+    return { ...prev, status: 'carregando', itens: [], total: 0, maxItems: 0, desatualizada: false, erro: '', ...semRestosDaLive(prev) };
+  }
+
+  // Produto do tile clicado, pelo itemId (data-item) comparado como texto; nunca pelo número do tile.
+  // Sem valor, ou sem produto com esse itemId: null (o clique não faz nada).
+  function cardByItemId(itens, valor) {
+    if (valor == null || valor === '' || !Array.isArray(itens)) return null;
+    const v = String(valor);
+    return itens.find((c) => c && c.itemId != null && String(c.itemId) === v) || null;
   }
 
   // Lê a sessão da URL a cada leitura. "limpar": a lista na tela é de outra sessão.
@@ -69,17 +83,20 @@
   }
 
   function tileHtml(c, comErro, m) {
-    const desligado = c.outOfStock || c.removed;
+    const semEstoque = c.outOfStock || c.removed;
     const cls = ['tile'];
     if (m.noAr != null && c.itemId != null && String(c.itemId) === String(m.noAr)) cls.push('noar');
-    if (desligado) cls.push('apagado');
+    if (semEstoque) cls.push('apagado');
     if (m.trocando) cls.push('trocando');
+    if (m.desligado) cls.push('desligado'); // Mostrar desligado nesta live após 2 erros
     // Sem onerror embutido (a página pode bloquear): o painel esconde a foto que falhar.
     const foto = c.image && !comErro.has(c.image)
       ? `<img src="${esc(SLA.bag.imageUrl(c.image))}" alt="" crossorigin="anonymous" data-img="${esc(c.image)}">`
       : '';
-    const off = desligado || m.trocando ? ' disabled' : '';
-    return `<button class="${cls.join(' ')}" data-act="bag-tile" data-n="${esc(c.n)}" title="${esc(c.name)} — ${esc(c.price)}${c.priceBefore ? ` (antes ${esc(c.priceBefore)})` : ''}"${off}>${foto}<span class="tn">${esc(c.n)}</span></button>`;
+    const off = semEstoque || m.trocando || m.desligado ? ' disabled' : '';
+    const item = c.itemId == null ? '' : esc(c.itemId);
+    const titulo = `${esc(c.name)} — ${esc(c.price)}${c.priceBefore ? ` (antes ${esc(c.priceBefore)})` : ''}${m.desligado ? ' · Mostrar desligado nesta live' : ''}`;
+    return `<button class="${cls.join(' ')}" data-act="bag-tile" data-n="${esc(c.n)}" data-item="${item}" title="${titulo}"${off}>${foto}<span class="tn">${esc(c.n)}</span></button>`;
   }
 
   function renderBagTab(m) {
@@ -152,7 +169,7 @@
 
     function parar() { if (timer) { clearInterval(timer); timer = null; } }
 
-    function render() { return renderBagTab({ ...state, fotosComErro: fotosQueFalharam }); }
+    function render() { return renderBagTab({ ...state, fotosComErro: fotosQueFalharam, desligado: !!(guarda && guarda.desligado) }); }
 
     function redesenhar() { try { SLA.panel.redraw(); } catch (e) { /* painel fora do ar */ } }
 
@@ -166,8 +183,8 @@
         if (pode.motivo === 'desligado') { state = { ...state, aviso: AVISO_DESLIGADO }; redesenhar(); }
         return; // 'em_andamento' e 'cedo': ignora em silêncio
       }
-      const n = el && el.dataset ? el.dataset.n : undefined;
-      const card = state.itens.find((c) => String(c.n) === String(n));
+      // Acha o produto pelo itemId do tile (não pelo número): um tile velho na tela não troca o produto errado.
+      const card = cardByItemId(state.itens, el && el.dataset ? el.dataset.item : undefined);
       if (!card || card.outOfStock || card.removed) return;
       const sessionId = SLA.bag.sessionIdFromHref(location.href);
       if (!sessionId || sessionId !== idDaLista) return; // a lista na tela é de outra live
@@ -223,7 +240,7 @@
 
   SLA.bagTab = {
     POLL_MS, MAX_FALHAS, FRESCO_MS, AVISO_DESLIGADO, avisoDeErro, initialState, renderBagTab, shouldPoll, nextState,
-    noSessionState, clearForNewSession, sessionStep, markImageFailed, failedImages, init,
+    noSessionState, clearForNewSession, cardByItemId, sessionStep, markImageFailed, failedImages, init,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = SLA.bagTab;
 

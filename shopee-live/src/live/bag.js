@@ -149,6 +149,10 @@
     };
   }
 
+  // Espera pela resposta do Mostrar: maior que os 15 s do pedido feito na página (pageBridge.js),
+  // para chegar o veredito da própria ponte (inclusive "tempo esgotado") antes de a extensão desistir.
+  const SHOW_TIMEOUT_MS = 20000;
+
   // Manda a Shopee mostrar o produto na live (pela ponte). Nunca lança nem rejeita.
   async function showItem(sessionId, card, win, opts) {
     try {
@@ -161,7 +165,7 @@
       }
       const w = win || (typeof window !== 'undefined' ? window : null);
       if (!w) return { ok: false, reason: 'rede', detail: 'sem janela' };
-      const timeoutMs = (opts && opts.timeoutMs) || 15000;
+      const timeoutMs = (opts && opts.timeoutMs) || SHOW_TIMEOUT_MS;
       let d;
       try {
         d = await bridgeRoundTrip(w, { type: 'show', path: `/webapi/v1/session/${sessionId}/show`, body: raw }, timeoutMs);
@@ -228,6 +232,6 @@
     }
   }
 
-  SLA.bag = { IMG_BASE, imageUrl, sessionIdFromHref, formatPrice, normalizeBag, filterBag, readBag, makeBridgeFetch, showItem };
+  SLA.bag = { IMG_BASE, imageUrl, sessionIdFromHref, formatPrice, normalizeBag, filterBag, readBag, makeBridgeFetch, showItem, SHOW_TIMEOUT_MS };
   if (typeof module !== 'undefined' && module.exports) module.exports = SLA.bag;
 })(typeof window !== 'undefined' ? window : globalThis);
