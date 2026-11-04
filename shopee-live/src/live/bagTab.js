@@ -99,13 +99,15 @@
     const off = semEstoque || m.trocando || m.desligado ? ' disabled' : '';
     const item = c.itemId == null ? '' : esc(c.itemId);
     const noAr = cls.includes('noar');
-    // Etiqueta "No ar": ao passar o mouse vira "Mover p/ cima" (clicável). Sem o botão enquanto há pedido em andamento.
-    const podeMover = noAr && !m.fixando && !m.trocando && !m.desligado && !m.pinDesligado;
-    const etiqueta = noAr
-      ? (podeMover
-        ? `<span class="tag" data-act="bag-pin" data-item="${item}"><span class="t1">No ar</span><span class="t2">Mover p/ cima</span></span>`
-        : '<span class="tag"><span class="t1">No ar</span></span>')
-      : '';
+    // Etiqueta embaixo da foto: no produto "No ar" mostra "No ar"; ao passar o mouse (e nos outros produtos,
+    // só no hover) vira "Mover p/ cima" (clicável). Sem o botão enquanto há pedido em andamento ou produto esgotado.
+    const podeMover = !semEstoque && !m.fixando && !m.trocando && !m.desligado && !m.pinDesligado;
+    let etiqueta = '';
+    if (podeMover) {
+      etiqueta = `<span class="tag${noAr ? '' : ' off'}" data-act="bag-pin" data-item="${item}"><span class="t1">${noAr ? 'No ar' : ''}</span><span class="t2">Mover p/ cima</span></span>`;
+    } else if (noAr) {
+      etiqueta = '<span class="tag"><span class="t1">No ar</span></span>';
+    }
     const titulo = `${esc(c.name)} — ${esc(c.price)}${c.priceBefore ? ` (antes ${esc(c.priceBefore)})` : ''}${m.desligado ? ' · Mostrar desligado nesta live' : ''}`;
     return `<button class="${cls.join(' ')}" data-act="bag-tile" data-n="${esc(c.n)}" data-item="${item}" title="${titulo}"${off}>${foto}<span class="tn">${esc(c.n)}</span>${etiqueta}</button>`;
   }
@@ -235,7 +237,7 @@
         return;
       }
       const card = cardByItemId(state.itens, el && el.dataset ? el.dataset.item : undefined);
-      if (!card || card.outOfStock || card.removed || String(card.itemId) !== String(state.noAr)) return;
+      if (!card || card.outOfStock || card.removed) return;
       const sessionId = SLA.bag.sessionIdFromHref(location.href);
       if (!sessionId || sessionId !== idDaLista) return;
       guardaPin = SLA.showGuard.startShow(guardaPin, Date.now());

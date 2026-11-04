@@ -321,6 +321,8 @@
     .tile.noar{border-color:#ee4d2d}
     .tile .tag{position:absolute;left:0;right:0;bottom:0;background:#ee4d2d;color:#fff;font-size:11px;line-height:16px;text-align:center}
     .tile .tag .t2{display:none}
+    .tile .tag.off{display:none}
+    .tile:hover .tag.off{display:block}
     .tile .tag[data-act]{cursor:pointer}
     .tile .tag[data-act]:hover{background:#1a73e8}
     .tile .tag[data-act]:hover .t1{display:none}

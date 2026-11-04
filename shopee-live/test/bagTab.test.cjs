@@ -326,21 +326,23 @@ test('cardByItemId: acha pelo itemId comparado como texto, nunca pelo número do
 
 // ---------- Mover p/ cima (etiqueta "No ar" vira o botão ao passar o mouse) ----------
 
-test('renderBagTab: só o tile "No ar" tem a etiqueta clicável de mover, com o itemId', () => {
-  const itens = [card(1), card(2), card(3)];
-  const html = bagTab.renderBagTab(base({ itens, total: 3, noAr: 2 }));
-  assert.strictEqual(count(html, 'data-act="bag-pin"'), 1);
+test('renderBagTab: todo tile em estoque tem a etiqueta clicável de mover, com o itemId', () => {
+  const itens = [card(1), card(2), card(3, { outOfStock: true }), card(4, { removed: true })];
+  const html = bagTab.renderBagTab(base({ itens, total: 4, noAr: 2 }));
+  assert.strictEqual(count(html, 'data-act="bag-pin"'), 2); // 1 e 2; esgotado e removido não
   assert.ok(/<span class="tag" data-act="bag-pin" data-item="2"[^>]*>/.test(html));
-  assert.ok(html.includes('No ar') && html.includes('Mover p/ cima'));
-  assert.strictEqual(count(bagTab.renderBagTab(base({ itens, total: 3, noAr: null })), 'bag-pin'), 0);
+  assert.ok(/<span class="tag off" data-act="bag-pin" data-item="1"[^>]*>/.test(html)); // fora do ar: só aparece no hover
+  assert.strictEqual(count(html, 'No ar'), 1); // só o produto no ar mostra "No ar"
+  assert.ok(html.includes('Mover p/ cima'));
+  assert.strictEqual(count(bagTab.renderBagTab(base({ itens: [card(1)], total: 1, noAr: null })), 'data-act="bag-pin"'), 1);
 });
 
 test('renderBagTab: sem etiqueta de mover quando fixando, trocando ou Mostrar desligado', () => {
-  const itens = [card(1)];
-  for (const extra of [{ fixando: true }, { trocando: true }, { desligado: true }]) {
-    const html = bagTab.renderBagTab(base({ itens, total: 1, noAr: 1, ...extra }));
+  const itens = [card(1), card(2)];
+  for (const extra of [{ fixando: true }, { trocando: true }, { desligado: true }, { pinDesligado: true }]) {
+    const html = bagTab.renderBagTab(base({ itens, total: 2, noAr: 1, ...extra }));
     assert.strictEqual(count(html, 'data-act="bag-pin"'), 0, JSON.stringify(extra));
-    assert.ok(html.includes('No ar'));
+    assert.strictEqual(count(html, 'No ar'), 1);
   }
 });
 
