@@ -2,7 +2,7 @@
 // A Shopee recusa (403) pedidos feitos direto pela extensão; o fetch da própria página funciona.
 // Esta ponte faz só TRÊS tipos de pedido, todos restritos:
 //  - leitura (GET, fetch da página): a lista da sacola;
-//  - escrita (POST, XMLHttpRequest da página): "Mostrar" um item, em /session/<n>/show, com o
+//  - escrita (PUT, XMLHttpRequest da página): "Mostrar" um item, em /session/<n>/show, com o
 //    corpo validado (o item exatamente como veio da lista da sacola);
 //  - escrita (PUT, XMLHttpRequest da página): adicionar à sacola, em /session/<n>/add_items, só com
 //    {items:[{shop_id,item_id}]} (até 20, inteiros positivos).
@@ -36,7 +36,7 @@
     }
   }
 
-  // ---- Escrita restrita: "Mostrar" o item (POST) ----
+  // ---- Escrita restrita: "Mostrar" o item (PUT) ----
   const SHOW_RE = /^\/webapi\/v1\/session\/\d+\/show$/;
   const SHOW_MAX = 20000;
 
@@ -87,7 +87,7 @@
     if (!isAllowedShowPath(data.path) || !validateShowBody(data.body)) {
       return Promise.resolve(reply(data.id, { error: 'pedido recusado' }));
     }
-    return xhrWrite('POST', data, getXhr);
+    return xhrWrite('PUT', data, getXhr); // PUT como o add_items (POST era só suposição e a Shopee devolvia data:{} sem efeito)
   }
 
   // ---- Escrita restrita: adicionar à sacola (PUT add_items) ----

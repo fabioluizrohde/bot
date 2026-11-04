@@ -158,7 +158,9 @@
   const SHOW_TIMEOUT_MS = 20000;
 
   // Resposta da ponte a um pedido de escrita -> resultado. Sucesso só com HTTP 2xx e err_code 0.
-  function interpretWrite(d) {
+  // exigeItem: número do produto que a resposta precisa devolver em data.item_id (o Mostrar nativo devolve o
+  // produto; "data":{} significa que a Shopee aceitou o pedido mas não fez nada).
+  function interpretWrite(d, exigeItem) {
     if (d.ok === false && d.status === 0) {
       if (d.error === 'pedido recusado' || d.error === 'pedido invalido') return { ok: false, reason: 'recusado' };
       return { ok: false, reason: 'rede', detail: String(d.error || 'ponte indisponível') };
@@ -172,6 +174,7 @@
     }
     if (!json || typeof json !== 'object') return { ok: false, reason: 'http', detail: 'resposta inesperada' };
     if (json.err_code !== 0) return { ok: false, reason: 'http', detail: 'err_code ' + json.err_code };
+    if (exigeItem !== undefined && !(json.data && Number(json.data.item_id) === exigeItem)) return { ok: false, reason: 'http', detail: 'sem efeito' };
     return { ok: true };
   }
 
@@ -196,7 +199,7 @@
       } catch (e) {
         return { ok: false, reason: 'rede', detail: String((e && e.message) || e) };
       }
-      return interpretWrite(d);
+      return interpretWrite(d, raw.item_id);
     } catch (e) {
       return { ok: false, reason: 'rede', detail: String((e && e.message) || e) };
     }

@@ -410,9 +410,19 @@ test('showItem: posta type show com path certo e body === card.raw; sucesso vira
   assert.strictEqual(msg.type, 'show');
   assert.strictEqual(msg.path, `/webapi/v1/session/${SID}/show`);
   assert.strictEqual(msg.body, c.raw);
-  w.answer({ source: 'sla-bridge', id: msg.id, ok: true, status: 200, text: '{"err_code":0}' });
+  w.answer({ source: 'sla-bridge', id: msg.id, ok: true, status: 200, text: '{"err_code":0,"err_msg":"sucesso","data":{"item_id":11,"shop_id":22}}' });
   assert.deepStrictEqual(await p, { ok: true });
   assert.strictEqual(w.listeners.length, 0);
+});
+
+test('showItem: resposta vazia (data:{}) ou de outro produto NÃO é sucesso', async () => {
+  for (const text of ['{"err_code":0,"err_msg":"sucesso","data":{}}', '{"err_code":0}', '{"err_code":0,"data":null}',
+    '{"err_code":0,"data":{"item_id":99,"shop_id":22}}']) {
+    const w = fakeWin();
+    const p = bag.showItem(SID, cardShow(), w);
+    w.answer({ source: 'sla-bridge', id: w.posted[0].msg.id, ok: true, status: 200, text });
+    assert.deepStrictEqual(await p, { ok: false, reason: 'http', detail: 'sem efeito' }, text);
+  }
 });
 
 test('showItem: err_code diferente de 0 vira http com detalhe', async () => {
@@ -482,7 +492,7 @@ test('showItem: ignora resposta de outro id, origem, fonte ou janela', async () 
   const w = fakeWin();
   const p = bag.showItem(SID, cardShow(), w, { timeoutMs: 200 });
   const id = w.posted[0].msg.id;
-  const boa = { source: 'sla-bridge', id, ok: true, status: 200, text: '{"err_code":0}' };
+  const boa = { source: 'sla-bridge', id, ok: true, status: 200, text: '{"err_code":0,"err_msg":"sucesso","data":{"item_id":11,"shop_id":22}}' };
   w.answer({ ...boa, id: 'outro' });
   w.answer({ ...boa, source: 'sla-ext' });
   w.answer(boa, { origin: 'https://evil.com' });

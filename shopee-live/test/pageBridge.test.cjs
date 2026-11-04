@@ -78,7 +78,7 @@ test('handleBridgeRequest: status não-ok passa direto', async () => {
   assert.strictEqual(r.text, 'no');
 });
 
-// ---------- pedido "show" (POST restrito) ----------
+// ---------- pedido "show" (PUT restrito) ----------
 
 const SHOW = '/webapi/v1/session/7898272/show';
 const ITEM = { item_id: 123, shop_id: 456, label: 'Camiseta', name: 'x' };
@@ -123,13 +123,13 @@ test('validateShowBody: aceita o item real e recusa o resto', () => {
   }
 });
 
-test('handleShowRequest: corpo válido faz o POST exato e resolve ok', async () => {
+test('handleShowRequest: corpo válido faz o PUT exato e resolve ok', async () => {
   FakeXhr.modo = { status: 200, text: '{"ok":1}' };
   let n = 0;
   const r = await handleShowRequest(pedidoShow(), () => { n++; return FakeXhr; });
   const x = FakeXhr.last;
   assert.strictEqual(n, 1);
-  assert.deepStrictEqual(x.calls, [['open', 'POST', SHOW, true]]);
+  assert.deepStrictEqual(x.calls, [['open', 'PUT', SHOW, true]]);
   assert.deepStrictEqual(x.headers, [['Content-Type', 'application/json;charset=UTF-8']]);
   assert.strictEqual(x.withCredentials, true);
   assert.strictEqual(x.timeout, 15000);
