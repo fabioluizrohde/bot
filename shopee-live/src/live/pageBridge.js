@@ -1,11 +1,13 @@
 // Ponte com a página: roda no mundo da própria página da live (manifest "world": "MAIN").
 // A Shopee recusa (403) pedidos feitos direto pela extensão; o fetch da própria página funciona.
-// Esta ponte faz só TRÊS tipos de pedido, todos restritos:
+// Esta ponte faz só QUATRO tipos de pedido, todos restritos:
 //  - leitura (GET, fetch da página): a lista da sacola;
 //  - escrita (PUT, XMLHttpRequest da página): "Mostrar" um item, em /session/<n>/show, com o
 //    corpo validado ({item: "<o item da lista da sacola, convertido em texto JSON>"});
 //  - escrita (PUT, XMLHttpRequest da página): adicionar à sacola, em /session/<n>/add_items, só com
-//    {items:[{shop_id,item_id}]} (até 20, inteiros positivos).
+//    {items:[{shop_id,item_id}]} (até 20, inteiros positivos);
+//  - escrita (POST, XMLHttpRequest da página): fixar UM item no topo, em /session/<n>/items/pin, só com
+//    {items:[{item_id,shop_id}]} (exatamente 1, inteiros positivos).
 // Não copia nem inventa cabeçalhos de segurança (só Content-Type). Não depende de nenhum outro
 // arquivo da extensão.
 (function () {
@@ -135,6 +137,39 @@
     return xhrWrite('PUT', data, getXhr);
   }
 
+  // ---- Escrita restrita: fixar no topo (POST items/pin) ----
+  // Conferido na live real em 2026-11-04: é o que o botão nativo "mover para cima" da Shopee envia.
+  const PIN_RE = /^\/webapi\/v1\/session\/\d+\/items\/pin$/;
+
+  function isAllowedPinPath(path) {
+    return typeof path === 'string' && PIN_RE.test(path);
+  }
+
+  // O corpo só pode ter "items" com EXATAMENTE 1 item, só item_id e shop_id inteiros positivos.
+  function validatePinBody(body) {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
+    if (Object.keys(body).join() !== 'items') return false;
+    const items = body.items;
+    if (!Array.isArray(items) || items.length !== 1) return false;
+    const it = items[0];
+    if (!it || typeof it !== 'object' || Array.isArray(it)) return false;
+    if (Object.keys(it).sort().join() !== 'item_id,shop_id') return false;
+    return idOk(it.item_id) && idOk(it.shop_id);
+  }
+
+  function handlePinRequest(data, getXhr) {
+    if (!data || typeof data !== 'object' || data.source !== 'sla-ext' || data.type !== 'pin') {
+      return Promise.resolve(reply(data && typeof data === 'object' ? data.id : undefined, { error: 'pedido invalido' }));
+    }
+    if (!isAllowedPinPath(data.path) || !validatePinBody(data.body)) {
+      return Promise.resolve(reply(data.id, { error: 'pedido recusado' }));
+    }
+    return xhrWrite('POST', data, getXhr);
+  }
+
+  bridge.isAllowedPinPath = isAllowedPinPath;
+  bridge.validatePinBody = validatePinBody;
+  bridge.handlePinRequest = handlePinRequest;
   bridge.isAllowedBridgePath = isAllowedBridgePath;
   bridge.isAllowedShowPath = isAllowedShowPath;
   bridge.validateShowBody = validateShowBody;
@@ -168,6 +203,10 @@
                 .catch(() => { /* nunca lança */ });
             } else if (d.type === 'add') {
               handleAddRequest(d, () => window.XMLHttpRequest)
+                .then((result) => window.postMessage(result, location.origin))
+                .catch(() => { /* nunca lança */ });
+            } else if (d.type === 'pin') {
+              handlePinRequest(d, () => window.XMLHttpRequest)
                 .then((result) => window.postMessage(result, location.origin))
                 .catch(() => { /* nunca lança */ });
             }

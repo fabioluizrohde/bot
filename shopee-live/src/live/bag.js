@@ -230,6 +230,31 @@
     }
   }
 
+  // Fixa UM produto no topo da lista (pela ponte, POST items/pin). entry: {shopId, itemId}.
+  // Nunca lança nem rejeita. Resultados: {ok:true} | {ok:false, reason:'recusado'|'rede'|'http', detail}.
+  async function pinItem(sessionId, entry, win, opts) {
+    try {
+      const ok = (n) => typeof n === 'number' && Number.isSafeInteger(n) && n > 0;
+      if (typeof sessionId !== 'string' || !/^\d+$/.test(sessionId)
+        || !entry || typeof entry !== 'object' || Array.isArray(entry) || !ok(entry.shopId) || !ok(entry.itemId)) {
+        return { ok: false, reason: 'recusado' };
+      }
+      const w = win || (typeof window !== 'undefined' ? window : null);
+      if (!w) return { ok: false, reason: 'rede', detail: 'sem janela' };
+      const timeoutMs = (opts && opts.timeoutMs) || SHOW_TIMEOUT_MS;
+      const body = { items: [{ item_id: entry.itemId, shop_id: entry.shopId }] };
+      let d;
+      try {
+        d = await bridgeRoundTrip(w, { type: 'pin', path: `/webapi/v1/session/${sessionId}/items/pin`, body }, timeoutMs);
+      } catch (e) {
+        return { ok: false, reason: 'rede', detail: String((e && e.message) || e) };
+      }
+      return interpretWrite(d);
+    } catch (e) {
+      return { ok: false, reason: 'rede', detail: String((e && e.message) || e) };
+    }
+  }
+
   // Lê a sacola inteira (com paginação de segurança). Nunca lança: devolve { ok:false, reason }.
   async function readBag(sessionId, fetchFn) {
     // Sem fetch injetado: usa a ponte da página (resolvida na hora da chamada).
@@ -271,6 +296,6 @@
     }
   }
 
-  SLA.bag = { IMG_BASE, imageUrl, sessionIdFromHref, formatPrice, normalizeBag, filterBag, readBag, makeBridgeFetch, showItem, addItems, ADD_MAX_ITEMS, SHOW_TIMEOUT_MS };
+  SLA.bag = { IMG_BASE, imageUrl, sessionIdFromHref, formatPrice, normalizeBag, filterBag, readBag, makeBridgeFetch, showItem, addItems, pinItem, ADD_MAX_ITEMS, SHOW_TIMEOUT_MS };
   if (typeof module !== 'undefined' && module.exports) module.exports = SLA.bag;
 })(typeof window !== 'undefined' ? window : globalThis);

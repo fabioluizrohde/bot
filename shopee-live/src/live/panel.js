@@ -319,7 +319,12 @@
     .tile img{width:100%;height:100%;object-fit:cover;display:block}
     .tile .tn{position:absolute;top:2px;left:2px;min-width:18px;padding:0 4px;border-radius:4px;background:rgba(0,0,0,.65);color:#fff;font-size:12px;font-weight:bold;line-height:18px;text-align:center}
     .tile.noar{border-color:#ee4d2d}
-    .tile.noar::after{content:"No ar";position:absolute;left:0;right:0;bottom:0;background:#ee4d2d;color:#fff;font-size:11px;line-height:16px;text-align:center}
+    .tile .tag{position:absolute;left:0;right:0;bottom:0;background:#ee4d2d;color:#fff;font-size:11px;line-height:16px;text-align:center}
+    .tile .tag .t2{display:none}
+    .tile .tag[data-act]{cursor:pointer}
+    .tile .tag[data-act]:hover{background:#1a73e8}
+    .tile .tag[data-act]:hover .t1{display:none}
+    .tile .tag[data-act]:hover .t2{display:inline}
     .tile.apagado{opacity:.45;cursor:default}
     .tile.trocando{opacity:.6}
     .tile.desligado{opacity:.45;filter:grayscale(1);cursor:not-allowed}

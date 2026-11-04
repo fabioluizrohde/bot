@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { isAllowedBridgePath, handleBridgeRequest, isAllowedShowPath, validateShowBody, handleShowRequest, isAllowedAddPath, validateAddBody, handleAddRequest } = require('../src/live/pageBridge.js');
+const { isAllowedBridgePath, handleBridgeRequest, isAllowedShowPath, validateShowBody, handleShowRequest, isAllowedAddPath, validateAddBody, handleAddRequest, isAllowedPinPath, validatePinBody, handlePinRequest } = require('../src/live/pageBridge.js');
 
 const OK = '/webapi/v1/session/7898272/host/items';
 
@@ -261,4 +261,65 @@ test('handleAddRequest: erro de rede vira ok:false status 0', async () => {
   assert.strictEqual(r.ok, false);
   assert.strictEqual(r.status, 0);
   assert.strictEqual(r.error, 'erro de rede');
+});
+
+// ---- Fixar no topo (POST items/pin) ----
+const PIN = '/webapi/v1/session/7911410/items/pin';
+const CORPO_PIN = { items: [{ item_id: 58253943326, shop_id: 652350556 }] };
+const pedidoPin = (extra) => ({ source: 'sla-ext', type: 'pin', id: 'p1', path: PIN, body: CORPO_PIN, ...extra });
+
+test('isAllowedPinPath: aceita só /session/<n>/items/pin', () => {
+  assert.strictEqual(isAllowedPinPath(PIN), true);
+  for (const r of ['/webapi/v1/session/1/items/pin?x=1', '/webapi/v1/session/1/items/pin/', '/webapi/v1/session/1/items/unpin',
+    '/webapi/v1/session/abc/items/pin', '//evil.com/x', 'https://x/y', '/webapi/v1/session/1/items/pin/../x', '', null, undefined, 42, {}]) {
+    assert.strictEqual(isAllowedPinPath(r), false, String(r));
+  }
+});
+
+test('validatePinBody: exatamente 1 item, só item_id e shop_id inteiros positivos', () => {
+  assert.strictEqual(validatePinBody(CORPO_PIN), true);
+  const ruins = [null, undefined, 'x', [], {}, { items: [] }, { items: 'x' },
+    { items: [{ item_id: 1, shop_id: 2 }, { item_id: 3, shop_id: 2 }] },
+    { items: [{ item_id: 1, shop_id: 2 }], extra: 1 }, { items: [{ item_id: 1, shop_id: 2, name: 'x' }] },
+    { items: [{ item_id: 1 }] }, { items: [{ shop_id: 1 }] }, { items: [{ item_id: '1', shop_id: 2 }] },
+    { items: [{ item_id: NaN, shop_id: 2 }] }, { items: [{ item_id: 1.5, shop_id: 2 }] },
+    { items: [{ item_id: 0, shop_id: 2 }] }, { items: [{ item_id: 1, shop_id: -2 }] }, { items: [null] }, { items: [[1, 2]] }];
+  for (const b of ruins) assert.strictEqual(validatePinBody(b), false, JSON.stringify(b));
+});
+
+test('handlePinRequest: corpo válido faz o POST exato e resolve ok', async () => {
+  FakeXhr.modo = { status: 200, text: '{"err_code":0}' };
+  let n = 0;
+  const r = await handlePinRequest(pedidoPin(), () => { n++; return FakeXhr; });
+  const x = FakeXhr.last;
+  assert.strictEqual(n, 1);
+  assert.deepStrictEqual(x.calls, [['open', 'POST', PIN, true]]);
+  assert.deepStrictEqual(x.headers, [['Content-Type', 'application/json;charset=UTF-8']]);
+  assert.strictEqual(x.withCredentials, true);
+  assert.strictEqual(x.sent, JSON.stringify(CORPO_PIN));
+  assert.deepStrictEqual(r, { source: 'sla-bridge', id: 'p1', ok: true, status: 200, text: '{"err_code":0}' });
+});
+
+test('handlePinRequest: caminho ou corpo recusado nunca chama getXhr', async () => {
+  let n = 0;
+  const get = () => { n++; return FakeXhr; };
+  for (const d of [pedidoPin({ path: SHOW }), pedidoPin({ path: ADD }), pedidoPin({ path: 'https://evil.com/x' }),
+    pedidoPin({ body: {} }), pedidoPin({ body: null }), pedidoPin({ body: { items: [{ item_id: 1, shop_id: 2 }, { item_id: 3, shop_id: 2 }] } })]) {
+    const r = await handlePinRequest(d, get);
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.error, 'pedido recusado');
+    assert.strictEqual(r.id, 'p1');
+  }
+  assert.strictEqual(n, 0);
+});
+
+test('handlePinRequest: pedido malformado e tipo errado', async () => {
+  let n = 0;
+  const get = () => { n++; return FakeXhr; };
+  for (const d of [null, undefined, 'x', {}, pedidoPin({ source: 'outro' }), pedidoPin({ type: 'add' })]) {
+    const r = await handlePinRequest(d, get);
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.error, 'pedido invalido');
+  }
+  assert.strictEqual(n, 0);
 });

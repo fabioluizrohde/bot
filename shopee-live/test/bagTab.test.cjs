@@ -57,18 +57,14 @@ test('renderBagTab: busca sem resultado', () => {
 test('renderBagTab: item esgotado/removido fica apagado e desligado; sem onerror', () => {
   const html = bagTab.renderBagTab(base({ itens: [card(1, { outOfStock: true }), card(2, { removed: true }), card(3)], total: 3 }));
   assert.strictEqual(count(html, 'apagado'), 2);
-  assert.strictEqual(count(html, ' disabled'), 3); // 2 tiles + botão "mover"
+  assert.strictEqual(count(html, ' disabled'), 2); // só os 2 tiles
   assert.ok(!html.includes('onerror')); // sem código embutido: a página pode bloquear (CSP)
   assert.ok(html.includes('data-img="img-1"'));
 });
 
-test('renderBagTab: modo padrão é mostrar; mover vem desligado', () => {
+test('renderBagTab: modo padrão é mostrar', () => {
   const html = bagTab.renderBagTab(base({ itens: [card(1)], total: 1 }));
   assert.ok(html.includes('<button class="on" data-act="bag-modo" data-modo="mostrar">Mostrar</button>'));
-  const mover = html.match(/<button[^>]*data-modo="mover"[^>]*>/)[0];
-  assert.ok(mover.includes('disabled') && mover.includes('title="em breve"') && !mover.includes('on"'));
-  const m2 = bagTab.renderBagTab(base({ itens: [card(1)], total: 1, modo: 'mover' }));
-  assert.ok(/<button[^>]*data-modo="mover"[^>]*disabled/.test(m2));
 });
 
 test('renderBagTab: title leva o preço antigo quando existe, tudo escapado', () => {
@@ -326,4 +322,34 @@ test('cardByItemId: acha pelo itemId comparado como texto, nunca pelo número do
   for (const v of [undefined, null, '', 'null', 'undefined']) assert.strictEqual(bagTab.cardByItemId(itens, v), null, String(v));
   assert.strictEqual(bagTab.cardByItemId(null, '999'), null);
   assert.strictEqual(bagTab.cardByItemId([], '999'), null);
+});
+
+// ---------- Mover p/ cima (etiqueta "No ar" vira o botão ao passar o mouse) ----------
+
+test('renderBagTab: só o tile "No ar" tem a etiqueta clicável de mover, com o itemId', () => {
+  const itens = [card(1), card(2), card(3)];
+  const html = bagTab.renderBagTab(base({ itens, total: 3, noAr: 2 }));
+  assert.strictEqual(count(html, 'data-act="bag-pin"'), 1);
+  assert.ok(/<span class="tag" data-act="bag-pin" data-item="2"[^>]*>/.test(html));
+  assert.ok(html.includes('No ar') && html.includes('Mover p/ cima'));
+  assert.strictEqual(count(bagTab.renderBagTab(base({ itens, total: 3, noAr: null })), 'bag-pin'), 0);
+});
+
+test('renderBagTab: sem etiqueta de mover quando fixando, trocando ou Mostrar desligado', () => {
+  const itens = [card(1)];
+  for (const extra of [{ fixando: true }, { trocando: true }, { desligado: true }]) {
+    const html = bagTab.renderBagTab(base({ itens, total: 1, noAr: 1, ...extra }));
+    assert.strictEqual(count(html, 'data-act="bag-pin"'), 0, JSON.stringify(extra));
+    assert.ok(html.includes('No ar'));
+  }
+});
+
+test('renderBagTab: o botão "Mover" em breve deixou de existir', () => {
+  const html = bagTab.renderBagTab(base({ itens: [card(1)], total: 1 }));
+  assert.ok(!html.includes('em breve'));
+  assert.ok(!html.includes('data-modo="mover"'));
+});
+
+test('AVISO_FIXAR_DESLIGADO existe e pinGuard usa as travas do showGuard', () => {
+  assert.ok(/fixar|mover/i.test(bagTab.AVISO_PIN_DESLIGADO));
 });
