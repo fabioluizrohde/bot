@@ -363,3 +363,100 @@ test('readBag com a ponte: 200 devolve a sacola', async () => {
   const r = await p;
   assert.strictEqual(r.ok, true);
 });
+
+// ---------- showItem (mostrar produto na live pela ponte) ----------
+
+const cardShow = () => ({ n: 3, itemId: 11, shopId: 22, raw: { item_id: 11, shop_id: 22, id: 3, name: 'X' } });
+
+test('showItem: posta type show com path certo e body === card.raw; sucesso vira {ok:true}', async () => {
+  const w = fakeWin();
+  const c = cardShow();
+  const p = bag.showItem(SID, c, w);
+  assert.strictEqual(w.posted.length, 1);
+  const { msg, origin } = w.posted[0];
+  assert.strictEqual(origin, 'https://live.shopee.com.br');
+  assert.strictEqual(msg.source, 'sla-ext');
+  assert.strictEqual(msg.type, 'show');
+  assert.strictEqual(msg.path, `/webapi/v1/session/${SID}/show`);
+  assert.strictEqual(msg.body, c.raw);
+  w.answer({ source: 'sla-bridge', id: msg.id, ok: true, status: 200, text: '{"err_code":0}' });
+  assert.deepStrictEqual(await p, { ok: true });
+  assert.strictEqual(w.listeners.length, 0);
+});
+
+test('showItem: err_code diferente de 0 vira http com detalhe', async () => {
+  const w = fakeWin();
+  const p = bag.showItem(SID, cardShow(), w);
+  w.answer({ source: 'sla-bridge', id: w.posted[0].msg.id, ok: true, status: 200, text: '{"err_code":5}' });
+  assert.deepStrictEqual(await p, { ok: false, reason: 'http', detail: 'err_code 5' });
+});
+
+test('showItem: texto que não é JSON vira http/resposta inesperada', async () => {
+  const w = fakeWin();
+  const p = bag.showItem(SID, cardShow(), w);
+  w.answer({ source: 'sla-bridge', id: w.posted[0].msg.id, ok: true, status: 200, text: '<html>' });
+  assert.deepStrictEqual(await p, { ok: false, reason: 'http', detail: 'resposta inesperada' });
+});
+
+test('showItem: status 403 vira http com detalhe 403', async () => {
+  const w = fakeWin();
+  const p = bag.showItem(SID, cardShow(), w);
+  w.answer({ source: 'sla-bridge', id: w.posted[0].msg.id, ok: false, status: 403, text: '' });
+  assert.deepStrictEqual(await p, { ok: false, reason: 'http', detail: '403' });
+});
+
+test('showItem: ponte recusou (pedido recusado / invalido) vira recusado; outro erro vira rede', async () => {
+  for (const error of ['pedido recusado', 'pedido invalido']) {
+    const w = fakeWin();
+    const p = bag.showItem(SID, cardShow(), w);
+    w.answer({ source: 'sla-bridge', id: w.posted[0].msg.id, ok: false, status: 0, text: '', error });
+    assert.strictEqual((await p).reason, 'recusado');
+  }
+  const w = fakeWin();
+  const p = bag.showItem(SID, cardShow(), w);
+  w.answer({ source: 'sla-bridge', id: w.posted[0].msg.id, ok: false, status: 0, text: '', error: 'falhou feio' });
+  assert.deepStrictEqual(await p, { ok: false, reason: 'rede', detail: 'falhou feio' });
+});
+
+test('showItem: sem resposta vira rede e não deixa ouvinte', async () => {
+  const w = fakeWin();
+  const r = await bag.showItem(SID, cardShow(), w, { timeoutMs: 20 });
+  assert.deepStrictEqual(r, { ok: false, reason: 'rede', detail: 'sem resposta da página' });
+  assert.strictEqual(w.listeners.length, 0);
+});
+
+test('showItem: entrada inválida vira recusado sem postar mensagem', async () => {
+  const w = fakeWin();
+  const bons = cardShow();
+  const ruins = [
+    [SID, {}],
+    [SID, { raw: null }],
+    [SID, { raw: 'x' }],
+    [SID, { raw: { item_id: 1 } }],
+    [SID, { raw: { item_id: '1', shop_id: 2 } }],
+    [SID, { raw: { item_id: NaN, shop_id: 2 } }],
+    ['12a', bons],
+    ['', bons],
+    [123, bons],
+    [SID, null],
+  ];
+  for (const [s, c] of ruins) {
+    assert.deepStrictEqual(await bag.showItem(s, c, w), { ok: false, reason: 'recusado' });
+  }
+  assert.strictEqual(w.posted.length, 0);
+  assert.strictEqual(w.listeners.length, 0);
+});
+
+test('showItem: ignora resposta de outro id, origem, fonte ou janela', async () => {
+  const w = fakeWin();
+  const p = bag.showItem(SID, cardShow(), w, { timeoutMs: 200 });
+  const id = w.posted[0].msg.id;
+  const boa = { source: 'sla-bridge', id, ok: true, status: 200, text: '{"err_code":0}' };
+  w.answer({ ...boa, id: 'outro' });
+  w.answer({ ...boa, source: 'sla-ext' });
+  w.answer(boa, { origin: 'https://evil.com' });
+  w.answer(boa, { source: {} });
+  assert.strictEqual(w.listeners.length, 1);
+  w.answer(boa);
+  assert.deepStrictEqual(await p, { ok: true });
+});

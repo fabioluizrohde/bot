@@ -98,56 +98,93 @@
 
   const MAX_PAGES = 20;
 
+  // Ida e volta com a ponte da página (pageBridge.js): posta `msg` (ganha um id único) e espera a
+  // resposta da própria página. Resolve com a resposta crua da ponte; rejeita só por tempo esgotado
+  // ou falha ao postar. Sempre remove o ouvinte e limpa o timer.
+  function bridgeRoundTrip(win, msg, timeoutMs) {
+    return new Promise((resolve, reject) => {
+      const id = 'sla-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+      let timer = null;
+      const onMessage = (ev) => {
+        const d = ev && ev.data;
+        if (!ev || ev.source !== win || ev.origin !== win.location.origin) return;
+        if (!d || d.source !== 'sla-bridge' || d.id !== id) return;
+        done();
+        resolve(d);
+      };
+      function done() {
+        if (timer) clearTimeout(timer);
+        timer = null;
+        win.removeEventListener('message', onMessage);
+      }
+      win.addEventListener('message', onMessage);
+      timer = setTimeout(() => {
+        done();
+        reject(new Error('sem resposta da página'));
+      }, timeoutMs);
+      try {
+        win.postMessage({ ...msg, source: 'sla-ext', id }, win.location.origin);
+      } catch (e) {
+        done();
+        reject(e);
+      }
+    });
+  }
+
   // fetch que passa pela ponte da página (pageBridge.js): a Shopee recusa pedidos diretos da extensão.
   function makeBridgeFetch(win, opts) {
     const timeoutMs = (opts && opts.timeoutMs) || 10000;
-    return function bridgeFetch(url) {
-      return new Promise((resolve, reject) => {
-        let path;
-        try {
-          const u = new URL(String(url), win.location.origin);
-          path = u.pathname + u.search;
-        } catch (e) {
-          reject(e);
-          return;
-        }
-        const id = 'sla-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
-        let timer = null;
-        const onMessage = (ev) => {
-          const d = ev && ev.data;
-          if (!ev || ev.source !== win || ev.origin !== win.location.origin) return;
-          if (!d || d.source !== 'sla-bridge' || d.id !== id) return;
-          done();
-          if (d.ok === false && d.status === 0) {
-            reject(new Error(d.error || 'ponte indisponível'));
-            return;
-          }
-          const text = String(d.text === undefined || d.text === null ? '' : d.text);
-          resolve({
-            ok: !!d.ok,
-            status: Number(d.status) || 0,
-            json: async () => JSON.parse(text),
-            text: async () => text,
-          });
-        };
-        function done() {
-          if (timer) clearTimeout(timer);
-          timer = null;
-          win.removeEventListener('message', onMessage);
-        }
-        win.addEventListener('message', onMessage);
-        timer = setTimeout(() => {
-          done();
-          reject(new Error('sem resposta da página'));
-        }, timeoutMs);
-        try {
-          win.postMessage({ source: 'sla-ext', type: 'fetch', id, path }, win.location.origin);
-        } catch (e) {
-          done();
-          reject(e);
-        }
-      });
+    return async function bridgeFetch(url) {
+      const u = new URL(String(url), win.location.origin);
+      const path = u.pathname + u.search;
+      const d = await bridgeRoundTrip(win, { type: 'fetch', path }, timeoutMs);
+      if (d.ok === false && d.status === 0) throw new Error(d.error || 'ponte indisponível');
+      const text = String(d.text === undefined || d.text === null ? '' : d.text);
+      return {
+        ok: !!d.ok,
+        status: Number(d.status) || 0,
+        json: async () => JSON.parse(text),
+        text: async () => text,
+      };
     };
+  }
+
+  // Manda a Shopee mostrar o produto na live (pela ponte). Nunca lança nem rejeita.
+  async function showItem(sessionId, card, win, opts) {
+    try {
+      const raw = card && card.raw;
+      if (typeof sessionId !== 'string' || !/^\d+$/.test(sessionId)
+        || !raw || typeof raw !== 'object'
+        || typeof raw.item_id !== 'number' || !Number.isFinite(raw.item_id)
+        || typeof raw.shop_id !== 'number' || !Number.isFinite(raw.shop_id)) {
+        return { ok: false, reason: 'recusado' };
+      }
+      const w = win || (typeof window !== 'undefined' ? window : null);
+      if (!w) return { ok: false, reason: 'rede', detail: 'sem janela' };
+      const timeoutMs = (opts && opts.timeoutMs) || 15000;
+      let d;
+      try {
+        d = await bridgeRoundTrip(w, { type: 'show', path: `/webapi/v1/session/${sessionId}/show`, body: raw }, timeoutMs);
+      } catch (e) {
+        return { ok: false, reason: 'rede', detail: String((e && e.message) || e) };
+      }
+      if (d.ok === false && d.status === 0) {
+        if (d.error === 'pedido recusado' || d.error === 'pedido invalido') return { ok: false, reason: 'recusado' };
+        return { ok: false, reason: 'rede', detail: String(d.error || 'ponte indisponível') };
+      }
+      if (!d.ok) return { ok: false, reason: 'http', detail: String(Number(d.status) || 0) };
+      let json;
+      try {
+        json = JSON.parse(String(d.text === undefined || d.text === null ? '' : d.text));
+      } catch (e) {
+        return { ok: false, reason: 'http', detail: 'resposta inesperada' };
+      }
+      if (!json || typeof json !== 'object') return { ok: false, reason: 'http', detail: 'resposta inesperada' };
+      if (json.err_code !== 0) return { ok: false, reason: 'http', detail: 'err_code ' + json.err_code };
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, reason: 'rede', detail: String((e && e.message) || e) };
+    }
   }
 
   // Lê a sacola inteira (com paginação de segurança). Nunca lança: devolve { ok:false, reason }.
@@ -191,6 +228,6 @@
     }
   }
 
-  SLA.bag = { IMG_BASE, imageUrl, sessionIdFromHref, formatPrice, normalizeBag, filterBag, readBag, makeBridgeFetch };
+  SLA.bag = { IMG_BASE, imageUrl, sessionIdFromHref, formatPrice, normalizeBag, filterBag, readBag, makeBridgeFetch, showItem };
   if (typeof module !== 'undefined' && module.exports) module.exports = SLA.bag;
 })(typeof window !== 'undefined' ? window : globalThis);
