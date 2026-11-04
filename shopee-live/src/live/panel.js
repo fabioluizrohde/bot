@@ -62,7 +62,7 @@
   }
 
   // Quais botões aparecem para o estado atual. "watching" = itens marcados, esperando o Confirmar do Fabio.
-  // A marcação é automática; "Marcar na live" só aparece para tentar de novo (ex.: o Fabio fechou a tela).
+  // A adição é automática; "Adicionar à sacola" só aparece para tentar de novo (ex.: um erro, ou nem tudo entrou).
   function viewState(batch, idsCount, watching) {
     const phase = batch ? batch.phase : null;
     const marcaveis = batch && SLA.batch ? SLA.batch.resolvedItems(batch).length : 0;
@@ -239,7 +239,7 @@
     }
     h += '<div class="row">';
     if (v.showRetomar) h += '<button data-act="reopen">Retomar</button>';
-    if (v.showMarcar) h += `<button class="pri" data-act="mark" ${s.marcando ? 'disabled' : ''}>Marcar na live</button>`;
+    if (v.showMarcar) h += `<button class="pri" data-act="mark" ${s.marcando ? 'disabled' : ''}>Adicionar à sacola</button>`;
     if (v.showAguardando) h += '<span class="mut">Aguardando seu Confirmar…</span>';
     if (v.showLimpar) h += '<button data-act="clear">Limpar lote</button>';
     h += '</div>';
@@ -393,59 +393,44 @@
     draw();
   }
 
-  // Marca na live os produtos favoritados e grava o resultado de cada um no lote.
-  async function markAll() {
-    if (state.marcando || state.stopWatch || !state.batch) return; // já há marcados esperando o Confirmar
-    const items = SLA.batch.resolvedItems(state.batch);
-    if (!items.length) return;
-    const add = SLA.addProducts;
-    if (!(add && add.markFavorites)) {
-      state.aviso = 'Marcar na live ainda não disponível';
+  // Adiciona o lote à sacola pela chamada interna (travas em autoAdd.js). auto=true: logo que o lote
+  // termina de resolver (uma vez por lote); auto=false: clique do Fabio em "Adicionar à sacola".
+  const circuit = { erros: 0 }; // 2 erros seguidos desligam o automático até recarregar a página
+
+  async function addAll(auto) {
+    if (state.marcando || !state.batch) return;
+    const AA = SLA.autoAdd;
+    if (!(AA && SLA.bag && SLA.bag.addItems)) {
+      state.aviso = 'Adicionar à sacola ainda não disponível';
       return draw();
     }
+    const sessionId = SLA.bag.sessionIdFromHref(typeof location !== 'undefined' ? location.href : '');
     state.marcando = true;
-    state.aviso = '';
+    state.aviso = 'Adicionando à sacola…';
     draw();
     try {
-      // Se a página não aceitar o clique simulado no bloco "Produtos", pede o clique ao apresentador.
-      const pedir = (texto) => { state.aviso = texto; draw(); };
-      const { marcados, updates } = planMarkResults(await add.markFavorites(items, { onWaitUser: pedir }), state.marcados);
-      for (const r of updates) {
-        const nb = await send({ type: 'batch:setStatus', id: r.id, status: r.status });
+      const r = await AA.run({
+        batch: state.batch,
+        sessionId,
+        auto,
+        circuit,
+        deps: {
+          markAdd: async () => {
+            const m = await send({ type: 'batch:markAdd' });
+            if (m && m.batch) state.batch = m.batch;
+            return m;
+          },
+          readBag: (sid) => SLA.bag.readBag(sid),
+          addItems: (sid, entries) => SLA.bag.addItems(sid, entries),
+        },
+      });
+      for (const u of r.updates) {
+        const nb = await send({ type: 'batch:setStatus', id: u.id, status: u.status });
         if (nb) state.batch = nb;
       }
-      stopWatching(); // no máximo UMA vigia do Confirmar
-      state.marcados = marcados;
-      if (marcados.length && add.watchConfirm) {
-        // Quando o Fabio clicar em Confirmar na Shopee, os marcados viram "adicionado".
-        let confirmou = false;
-        const parar = add.watchConfirm(
-          async () => {
-            confirmou = true;
-            for (const id of marcados) {
-              try {
-                const nb = await send({ type: 'batch:setStatus', id, status: 'adicionado' });
-                if (nb) state.batch = nb;
-              } catch (_) { /* ignora */ }
-            }
-            state.marcados = [];
-            state.aviso = '';
-            draw();
-          },
-          () => { // a tela de Adicionar Produtos fechou: "Marcar na live" volta, para tentar de novo
-            if (state.stopWatch !== parar) return; // já foi trocada por outra vigia
-            state.stopWatch = null;
-            if (!confirmou) state.aviso = 'A tela de Adicionar Produtos fechou sem Confirmar. Para tentar de novo, clique em Marcar na live.';
-            draw();
-          }
-        );
-        state.stopWatch = parar;
-      }
-      state.aviso = marcados.length
-        ? `${marcados.length} marcados — confira e clique em Confirmar`
-        : 'Nenhum produto novo para marcar (os do lote já estavam na sacola ou precisam de conferência).';
+      state.aviso = r.aviso || '';
     } catch (e) {
-      state.aviso = 'Não consegui marcar na live: ' + ((e && e.message) || e);
+      state.aviso = 'Não consegui adicionar à sacola: ' + ((e && e.message) || e);
     } finally {
       state.marcando = false;
       draw();
@@ -468,7 +453,7 @@
     }
     state.aviso = '';
     if (act === 'start') {
-      const r = await send({ type: 'batch:start', ids: state.ids, openIn: state.openIn });
+      const r = await send({ type: 'batch:start', ids: state.ids, openIn: state.openIn, sessionId: SLA.bag && SLA.bag.sessionIdFromHref ? SLA.bag.sessionIdFromHref(location.href) : null });
       if (r && r.error) {
         state.aviso = r.error === 'lote em andamento' ? 'Já existe um lote em andamento.' : String(r.error);
         return draw();
@@ -481,7 +466,7 @@
       await send({ type: 'batch:clear' });
       return setBatch(null);
     }
-    if (act === 'mark') return markAll();
+    if (act === 'mark') return addAll(false);
   }
 
   function onMouseUp() {
@@ -507,7 +492,7 @@
     else if (msg.type === 'batch:resolved') {
       // O Lote está sempre à vista; aviso novo ou pausa nova fazem o draw() abri-lo mesmo recolhido.
       setBatch(msg.batch);
-      markAll(); // marca sozinho; sem a Tarefa 8 só mostra o aviso
+      addAll(true); // adiciona sozinho (uma vez por lote; travas em autoAdd.js)
     }
   }
 

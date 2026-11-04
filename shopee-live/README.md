@@ -9,7 +9,7 @@ Versão 0.4.0. Ajuda quem apresenta lives da Shopee Brasil a transformar **IDs d
 1. Você seleciona um trecho do chat da live e a extensão lista os IDs que achou.
 2. Ela abre a Shopee e, a cada ID, cola o número na busca, abre o produto e o coloca nos seus Favoritos.
 3. De volta à live, ela marca esses produtos na tela "Adicionar Produtos" (aba Meus Favoritos).
-4. **Você confere e clica em Confirmar.** A extensão não faz essa parte.
+4. **A extensão adiciona à sacola** (veja o passo 5 mais abaixo).
 
 ### Sacola com fotos e Mostrar
 
@@ -67,6 +67,7 @@ Em 2026-11-03 o fluxo do Lote foi testado numa live real e funcionou. Foram conf
 
 O que ainda precisa de você numa live real (recarregue a extensão em `chrome://extensions` e dê F5 na live):
 
+- [ ] **Adicionar sem clique (primeiro uso real):** comece com **1 ID** no chat. Confira que o produto entra na sacola sozinho (sem Produtos nem Confirmar), que o quadro mostra "1 adicionado" e que o Lote se limpa ao selecionar IDs novos. Depois teste com 3 IDs, e com um ID que já está na sacola (deve virar "já na sacola" sem duplicar).
 - [ ] **Tamanho e posição lembrados:** mude o tamanho e a posição do painel, recarregue a página (F5) e confira que ele volta igual.
 - [ ] **Cinco fotos por linha:** confira que a grade mostra cerca de cinco fotos por linha no tamanho inicial.
 - [ ] **Lote visível durante um lote:** rode um lote e confira que o Lote continua à vista no topo, sem sumir atrás da Sacola.
@@ -92,8 +93,8 @@ Depois de mudar qualquer arquivo da extensão, clique em **Recarregar** no card 
 2. Clique em **Processar lote**. A Shopee abre numa aba nova (ou numa janela, veja Configuração).
 3. Na Shopee aparece um aviso "ID k de N: clique na busca". **Clique uma vez na caixa de busca da Shopee** para cada ID. A extensão cola o ID, abre o produto e favorita. O clique é seu de propósito: mantém um ritmo humano e reduz o risco de a Shopee pedir verificação.
 4. Quando o último ID termina, a Shopee se fecha sozinha e você volta para a aba da live.
-5. A extensão **marca sozinha**: abre a tela de Adicionar Produtos, vai em Meus Favoritos e marca cada produto do lote pelo nome. O painel mostra "Aguardando seu Confirmar…". A Shopee só deixa o bloco "Produtos" abrir com um clique de mouse de verdade; por isso, se o painel mostrar **"Clique no bloco "Produtos" (coluna da esquerda): eu continuo sozinha."**, clique uma vez nesse bloco e a extensão continua. O botão **Marcar na live** só aparece se for preciso tentar de novo (por exemplo, se você fechou a tela de Adicionar Produtos sem confirmar).
-6. **Confira os produtos marcados e clique você mesmo em Confirmar**, na tela da Shopee. Até lá os itens aparecem como "favoritado" ou "já estava favoritado"; depois do Confirmar ficam como "adicionado".
+5. A extensão **adiciona sozinha à sacola**, sem nenhum clique: lê a sacola, tira o que já está nela e envia o resto numa chamada interna da própria página da live (`add_items`). Depois relê a sacola e só marca como "adicionado" o que realmente apareceu. Isso acontece **uma vez por lote**. Se der erro, ela não repete sozinha: o botão **Adicionar à sacola** aparece para você tentar de novo. Dois erros seguidos desligam o automático até recarregar a página.
+6. **Confira a sacola.** Os itens do lote aparecem como "adicionado" (ou "já na sacola"). A tela Produtos e o Confirmar não são mais usados.
 
 Se você fechar a aba da Shopee no meio, o lote fica guardado. Use o botão **Retomar** no painel (a aba antiga da Shopee, se ainda estiver aberta, é fechada e uma nova é aberta). Se a Shopee pedir verificação (captcha), resolva e clique em **Continuar** no aviso. Se um ID travar, use o botão **Pular este ID** no aviso da Shopee: ele fica como "não achei" e o lote segue (a extensão não clica em nada da página).
 
@@ -103,7 +104,7 @@ No **⚙** do cabeçalho do painel: **Abrir a Shopee em** aba (padrão) ou janel
 
 ## O que a extensão nunca faz sozinha
 
-- Nunca clica em **Confirmar** nem em **Remover**. Essas decisões são sempre suas.
+- Nunca clica em **Remover**. A adição à sacola é feita só com os produtos do seu lote, por uma chamada interna restrita (`PUT add_items`, até 20 produtos por pedido); o Confirmar da Shopee deixou de ser necessário.
 - Só coloca um produto no ar (**Mostrar**) quando **você clica numa foto**: um pedido por clique seu, nunca automático.
 - Não responde no chat e não mexe em cupons.
 - Não desfavorita produtos de lotes antigos.
