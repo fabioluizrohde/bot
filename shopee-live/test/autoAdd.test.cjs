@@ -196,3 +196,35 @@ test('run: nunca lança, mesmo se uma dependência estourar', async () => {
   assert.ok(r && typeof r.aviso === 'string');
   assert.strictEqual(d.calls.add.length, 0);
 });
+
+test('run: a Shopee demora a mostrar o produto — relê a sacola algumas vezes antes de desistir', async () => {
+  const esperas = [];
+  const d = deps({ wait: async (ms) => { esperas.push(ms); } });
+  // 1ª leitura: antes; 2ª e 3ª: ainda sem os produtos; 4ª: já aparecem
+  d.bags = [sacola([]), sacola([]), sacola([]), sacola([10, 20, 30])];
+  const circuit = { erros: 1 };
+  const r = await R(lote(), d, { circuit });
+  assert.strictEqual(d.calls.add.length, 1); // um único envio, mesmo com várias conferências
+  assert.deepStrictEqual(r.updates.map((u) => u.status), ['adicionado', 'adicionado', 'adicionado']);
+  assert.strictEqual(circuit.erros, 0);
+  assert.strictEqual(esperas.length, 2);
+});
+
+test('run: depois de esperar tudo e não aparecer, avisa e não marca como adicionado', async () => {
+  const d = deps({ wait: async () => {} });
+  d.bags = [sacola([]), sacola([])];
+  const circuit = { erros: 0 };
+  const r = await R(lote(), d, { circuit });
+  assert.strictEqual(d.calls.add.length, 1);
+  assert.deepStrictEqual(r.updates, []);
+  assert.strictEqual(circuit.erros, 1);
+  assert.match(r.aviso, /0 de 3/);
+});
+
+test('run: erro definitivo (http) não fica esperando a sacola', async () => {
+  const esperas = [];
+  const d = deps({ addResult: { ok: false, reason: 'http', detail: '500' }, wait: async (ms) => { esperas.push(ms); } });
+  d.bags = [sacola([]), sacola([])];
+  await R(lote(), d);
+  assert.strictEqual(esperas.length, 0);
+});

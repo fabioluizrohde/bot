@@ -14,6 +14,7 @@
 
   const MAX_POR_PEDIDO = 20;
   const MAX_ERROS = 2;
+  const ESPERAS_MS = [1000, 1500, 2000, 3000]; // pausas entre as releituras da sacola depois do envio
 
   // Motivo de não enviar agora, ou null se pode. auto=true: envio automático (respeita "já tentou" e o disjuntor);
   // auto=false: clique do Fabio (só ignora esses dois).
@@ -86,13 +87,22 @@
       }
 
       let falhou = false;
+      let definitivo = false; // erro que a Shopee respondeu (recusou): esperar a sacola não adianta
       for (const parte of chunks(plano.toAdd)) {
         const r = await deps.addItems(sessionId, parte.map((c) => ({ shopId: c.shopId, itemId: c.itemId })));
-        if (!r || !r.ok) { falhou = true; break; } // nunca repete; os pedidos seguintes também não saem
+        if (!r || !r.ok) { falhou = true; definitivo = !!(r && (r.reason === 'http' || r.reason === 'recusado')); break; } // nunca repete
       }
 
       // Confere pela sacola: só vira "adicionado" o que apareceu lá (vale também depois de erro/tempo esgotado).
-      const depois = await deps.readBag(sessionId);
+      // A Shopee demora um instante para mostrar o produto: relê algumas vezes antes de desistir.
+      const esperas = deps.wait && !definitivo ? ESPERAS_MS : [];
+      let depois = await deps.readBag(sessionId);
+      const faltam = (b) => !(b && b.ok) || plano.toAdd.some((c) => !(b.items || []).some((x) => x.itemId === c.itemId));
+      for (const ms of esperas) {
+        if (!faltam(depois)) break;
+        await deps.wait(ms);
+        depois = await deps.readBag(sessionId);
+      }
       let adicionados = 0;
       if (depois && depois.ok) {
         const naSacola = new Set((depois.items || []).map((c) => c.itemId));

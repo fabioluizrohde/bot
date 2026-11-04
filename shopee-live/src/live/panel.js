@@ -422,6 +422,7 @@
           },
           readBag: (sid) => SLA.bag.readBag(sid),
           addItems: (sid, entries) => SLA.bag.addItems(sid, entries),
+          wait: (ms) => new Promise((res) => setTimeout(res, ms)),
         },
       });
       for (const u of r.updates) {
@@ -434,6 +435,8 @@
     } finally {
       state.marcando = false;
       draw();
+      // A grade de fotos da Sacola mostra o que acabou de entrar sem esperar a leitura periódica.
+      try { if (SLA.bagTab && typeof SLA.bagTab.refresh === 'function') SLA.bagTab.refresh(); } catch (_) { /* ignora */ }
     }
   }
 

@@ -167,6 +167,8 @@
       try { SLA.panel.redraw(); } catch (e) { /* painel fora do ar */ }
     }
 
+    SLA.bagTab.refresh = () => { state = { ...state, falhas: 0 }; return ler(); }; // lê agora (ex.: depois de adicionar)
+
     function parar() { if (timer) { clearInterval(timer); timer = null; } }
 
     function render() { return renderBagTab({ ...state, fotosComErro: fotosQueFalharam, desligado: !!(guarda && guarda.desligado) }); }
