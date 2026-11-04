@@ -120,6 +120,17 @@
     return !!(aviso && String(aviso).trim()) || !!(batch && batch.paused);
   }
 
+  // Decide se o Lote abre sozinho agora: só com aviso NOVO (texto diferente do último que já
+  // abriu) ou pausa NOVA (passou a pausado). Assim, se o Fabio recolher com o mesmo aviso na
+  // tela, o Lote fica recolhido. Aviso vazio zera a memória: o mesmo texto depois abre de novo.
+  function nextLoteExpansion(prev, aviso, batch) {
+    const p = prev || {};
+    const a = aviso && String(aviso).trim() ? String(aviso) : '';
+    const pausa = !!(batch && batch.paused);
+    const expandir = (a !== '' && a !== (p.ultimoAviso || '')) || (pausa && !p.ultimaPausa);
+    return { expandir, ultimoAviso: a, ultimaPausa: pausa };
+  }
+
   // Rolagem a devolver depois de redesenhar: no mesmo bloco, a de antes; ao trocar de conteúdo, o topo.
   function scrollToRestore(prevTab, curTab, savedTop) {
     return prevTab === curTab && Number.isFinite(savedTop) ? savedTop : 0;
@@ -143,6 +154,7 @@
   let desenhado = false; // o painel já foi desenhado ao menos uma vez
   // O que .lote e .area mostravam no último draw(), para saber se a rolagem de cada um deve ser mantida.
   let loteDesenhado = null;
+  let expansao = { ultimoAviso: '', ultimaPausa: false }; // último aviso/pausa que já abriu o Lote
   let areaDesenhada = null;
 
   const send = (msg) => chrome.runtime.sendMessage(msg);
@@ -260,7 +272,7 @@
     .head .hb:hover{background:rgba(255,255,255,.2)}
     .menu{flex:none;padding:6px 10px;background:#fafafa;border-bottom:1px solid #ddd}
     .menu h4{margin:2px 0 4px}
-    .lote{flex:none;max-height:35%;overflow:auto;padding:0 10px 8px;border-bottom:2px solid #eee}
+    .lote{flex:none;max-height:40vh;overflow:auto;padding:0 10px 8px;border-bottom:2px solid #eee}
     .lote.recolhido{padding:6px 10px}
     .area{flex:1;min-height:0;overflow:auto;padding:0 10px 10px}
     .area:empty{display:none}
@@ -287,8 +299,10 @@
 
   function draw() {
     if (!shadow) return;
-    // Aviso ou pausa: o Lote abre sozinho (o pedido de clique e os erros nunca ficam escondidos).
-    if (state.loteRecolhido && shouldExpandLote(state.aviso, state.batch)) state.loteRecolhido = false;
+    // Aviso novo ou pausa nova: o Lote abre sozinho (o pedido de clique e os erros aparecem);
+    // recolhido à mão com o mesmo aviso na tela, continua recolhido.
+    expansao = nextLoteExpansion(expansao, state.aviso, state.batch);
+    if (expansao.expandir) state.loteRecolhido = false;
     const recolhido = state.loteRecolhido;
     // Guarda o foco (e o cursor) do campo marcado com data-focus-key, para a digitação não travar.
     const ae = shadow.activeElement;
@@ -314,7 +328,7 @@
       lote.classList.toggle('recolhido', recolhido);
       lote.innerHTML = recolhido ? `<span class="mut">${esc(loteSummary(state.batch, state.ids))}</span>` : renderLote();
       const max = SLA.layout && typeof SLA.layout.loteMaxHeight === 'function' ? SLA.layout.loteMaxHeight(alturaPainel(box)) : NaN;
-      lote.style.maxHeight = Number.isFinite(max) && max > 0 ? max + 'px' : ''; // vazio: fica o 35% do CSS
+      lote.style.maxHeight = Number.isFinite(max) && max > 0 ? max + 'px' : ''; // vazio: fica o 40vh do CSS
     }
     if (area) area.innerHTML = areas.map(renderArea).join('');
     if (focusKey) {
@@ -452,7 +466,7 @@
     if (!msg) return;
     if (msg.type === 'batch:update') setBatch(msg.batch);
     else if (msg.type === 'batch:resolved') {
-      // O Lote está sempre à vista; se houver aviso ou pausa, draw() o abre mesmo recolhido.
+      // O Lote está sempre à vista; aviso novo ou pausa nova fazem o draw() abri-lo mesmo recolhido.
       setBatch(msg.batch);
       markAll(); // marca sozinho; sem a Tarefa 8 só mostra o aviso
     }
@@ -521,7 +535,7 @@
     draw();
   }
 
-  SLA.panel = { registerArea, registerTab, redraw, isAreaVisible, isTabActive, findExtraAction, loteSummary, shouldExpandLote, scrollToRestore, refocus, shouldMount, isInsideChat, filterOutBatch, mergeIds, removeId, statusLabel, viewState, normalizeResults, planMarkResults, init };
+  SLA.panel = { registerArea, registerTab, redraw, isAreaVisible, isTabActive, findExtraAction, loteSummary, shouldExpandLote, nextLoteExpansion, scrollToRestore, refocus, shouldMount, isInsideChat, filterOutBatch, mergeIds, removeId, statusLabel, viewState, normalizeResults, planMarkResults, init };
   if (typeof module !== 'undefined' && module.exports) module.exports = SLA.panel;
 
   if (typeof document !== 'undefined' && typeof chrome !== 'undefined' && chrome.runtime) {

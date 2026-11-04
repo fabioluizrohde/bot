@@ -189,6 +189,37 @@ test('shouldExpandLote: aviso não vazio ou lote pausado', () => {
   assert.strictEqual(P.shouldExpandLote(undefined, undefined), false);
 });
 
+test('nextLoteExpansion: só aviso NOVO ou pausa NOVA abrem o Lote', () => {
+  const l = B.createBatch(['AAA-BBB-CCC']);
+  let s = { ultimoAviso: '', ultimaPausa: false };
+  // mesmo aviso duas vezes: abre uma vez só
+  let r = P.nextLoteExpansion(s, 'Clique no bloco Produtos', l);
+  assert.strictEqual(r.expandir, true);
+  r = P.nextLoteExpansion(r, 'Clique no bloco Produtos', l);
+  assert.strictEqual(r.expandir, false);
+  // aviso diferente: abre de novo
+  r = P.nextLoteExpansion(r, 'Não consegui marcar na live: x', l);
+  assert.strictEqual(r.expandir, true);
+  // aviso some e o mesmo texto volta depois: abre de novo
+  r = P.nextLoteExpansion(r, '', l);
+  assert.strictEqual(r.expandir, false);
+  assert.strictEqual(r.ultimoAviso, '');
+  r = P.nextLoteExpansion(r, 'Não consegui marcar na live: x', l);
+  assert.strictEqual(r.expandir, true);
+  // aviso vazio nunca abre
+  assert.strictEqual(P.nextLoteExpansion({ ultimoAviso: '', ultimaPausa: false }, '', null).expandir, false);
+  assert.strictEqual(P.nextLoteExpansion(undefined, '', null).expandir, false);
+  // pausa: false→true abre; continuar pausado não reabre
+  s = { ultimoAviso: '', ultimaPausa: false };
+  r = P.nextLoteExpansion(s, '', { ...l, paused: true });
+  assert.strictEqual(r.expandir, true);
+  r = P.nextLoteExpansion(r, '', { ...l, paused: true });
+  assert.strictEqual(r.expandir, false);
+  r = P.nextLoteExpansion(r, '', l); // despausou
+  assert.strictEqual(r.ultimaPausa, false);
+  assert.strictEqual(P.nextLoteExpansion(r, '', { ...l, paused: true }).expandir, true);
+});
+
 test('API de áreas: registerArea, isAreaVisible, redraw e o alias registerTab', () => {
   assert.strictEqual(typeof P.registerArea, 'function');
   assert.strictEqual(typeof P.isAreaVisible, 'function');
