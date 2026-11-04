@@ -19,12 +19,19 @@
     return !!s.ativa && !s.escondida && s.falhas < MAX_FALHAS;
   }
 
+  // Texto do erro; "rede" e "http" mostram o detalhe (mensagem ou número do erro) quando houver.
+  function erroTexto(reason, detail) {
+    const base = ERROS[reason] || ERROS.formato;
+    if (!detail || (reason !== 'http' && reason !== 'rede')) return base;
+    return `${base} (${detail})`;
+  }
+
   function nextState(prev, r) {
     if (r && r.ok) {
       return { ...prev, status: 'ok', itens: r.items, total: r.total, maxItems: r.maxItems, desatualizada: false, erro: '', falhas: 0 };
     }
     const reason = r && r.reason;
-    return { ...prev, status: 'erro', desatualizada: true, erro: ERROS[reason] || ERROS.formato, falhas: (prev.falhas || 0) + 1 };
+    return { ...prev, status: 'erro', desatualizada: true, erro: erroTexto(reason, r && r.detail), falhas: (prev.falhas || 0) + 1 };
   }
 
   // Sessão sem "?session=" na URL: mensagem própria, sem lista e sem contar como falha de leitura.

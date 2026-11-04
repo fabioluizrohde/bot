@@ -97,9 +97,63 @@
 
   const MAX_PAGES = 20;
 
+  // fetch que passa pela ponte da página (pageBridge.js): a Shopee recusa pedidos diretos da extensão.
+  function makeBridgeFetch(win, opts) {
+    const timeoutMs = (opts && opts.timeoutMs) || 10000;
+    return function bridgeFetch(url) {
+      return new Promise((resolve, reject) => {
+        let path;
+        try {
+          const u = new URL(String(url), win.location.origin);
+          path = u.pathname + u.search;
+        } catch (e) {
+          reject(e);
+          return;
+        }
+        const id = 'sla-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+        let timer = null;
+        const onMessage = (ev) => {
+          const d = ev && ev.data;
+          if (!ev || ev.source !== win || ev.origin !== win.location.origin) return;
+          if (!d || d.source !== 'sla-bridge' || d.id !== id) return;
+          done();
+          if (d.ok === false && d.status === 0) {
+            reject(new Error(d.error || 'ponte indisponível'));
+            return;
+          }
+          const text = String(d.text === undefined || d.text === null ? '' : d.text);
+          resolve({
+            ok: !!d.ok,
+            status: Number(d.status) || 0,
+            json: async () => JSON.parse(text),
+            text: async () => text,
+          });
+        };
+        function done() {
+          if (timer) clearTimeout(timer);
+          timer = null;
+          win.removeEventListener('message', onMessage);
+        }
+        win.addEventListener('message', onMessage);
+        timer = setTimeout(() => {
+          done();
+          reject(new Error('sem resposta da página'));
+        }, timeoutMs);
+        try {
+          win.postMessage({ source: 'sla-ext', type: 'fetch', id, path }, win.location.origin);
+        } catch (e) {
+          done();
+          reject(e);
+        }
+      });
+    };
+  }
+
   // Lê a sacola inteira (com paginação de segurança). Nunca lança: devolve { ok:false, reason }.
   async function readBag(sessionId, fetchFn) {
-    const doFetch = fetchFn || (typeof fetch === 'function' ? fetch : null);
+    // Sem fetch injetado: usa a ponte da página (resolvida na hora da chamada).
+    const doFetch = fetchFn
+      || (typeof window !== 'undefined' ? makeBridgeFetch(window) : (typeof fetch === 'function' ? fetch : null));
     if (!doFetch) return { ok: false, reason: 'rede', detail: 'sem fetch' };
     const byN = new Map();
     let total = 0;
@@ -136,6 +190,6 @@
     }
   }
 
-  SLA.bag = { IMG_BASE, imageUrl, sessionIdFromHref, formatPrice, normalizeBag, filterBag, readBag };
+  SLA.bag = { IMG_BASE, imageUrl, sessionIdFromHref, formatPrice, normalizeBag, filterBag, readBag, makeBridgeFetch };
   if (typeof module !== 'undefined' && module.exports) module.exports = SLA.bag;
 })(typeof window !== 'undefined' ? window : globalThis);

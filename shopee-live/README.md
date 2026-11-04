@@ -1,6 +1,6 @@
 # Assistente de Live Shopee (extensão de navegador)
 
-Versão 0.3.0. Ajuda quem apresenta lives da Shopee Brasil a transformar **IDs de produto pedidos no chat** (como `CLH-NZK-QPT`) em produtos na sacola da live, sem digitar nada.
+Versão 0.3.1. Ajuda quem apresenta lives da Shopee Brasil a transformar **IDs de produto pedidos no chat** (como `CLH-NZK-QPT`) em produtos na sacola da live, sem digitar nada.
 
 ## O que ela faz hoje: Pedidos por ID em lote
 
@@ -20,6 +20,9 @@ Mostra todos os produtos da sacola da live, **numerados**, cada um com foto, nom
 - **Atualização automática:** a cada 20 segundos, mas **só enquanto a aba Sacola está aberta e a página da live está visível**. Com outra aba do painel ativa, ou com a página escondida, a extensão não consulta a Shopee.
 - **Se a leitura falhar 3 vezes seguidas**, a atualização automática para. O botão **Atualizar** lê de novo e retoma o automático.
 - **"Lista desatualizada"** quer dizer que a última leitura falhou e o que você vê é a última lista que deu certo. Ela some quando uma leitura nova funciona.
+- **Como ela lê:** a extensão pede a lista pela própria página da live (uma "ponte"), porque a Shopee recusa (erro 403) pedidos feitos direto por extensões.
+- **A ponte só lê a lista da sacola.** Ela não escreve nada e não envia nada para nenhum outro lugar.
+- **Se a Shopee mudar isso**, a aba mostra uma mensagem de erro (por exemplo "sem conexão (sem resposta da página)") e o resto da extensão continua funcionando.
 - **Nesta versão a aba só lê e não altera nada** na sua live. A etiqueta **"No ar"** (qual produto está sendo mostrado) e o botão **Mostrar** vêm na próxima etapa.
 
 ## Conferências na live real
@@ -86,7 +89,7 @@ Na aba **Config** do painel: **Abrir a Shopee em** aba (padrão) ou janela separ
 
 ## Se a Shopee mudar o layout
 
-Todos os textos e seletores da página ficam **em um único arquivo**: `src/lib/selectors.js`. Se algum passo deixar de funcionar, ajuste o valor correspondente nesse arquivo (cada linha tem um comentário dizendo para que serve). A única exceção é o endereço das fotos da aba Sacola, `IMG_BASE`, em `src/live/bag.js`. Depois recarregue a extensão em `chrome://extensions` e recarregue a live. As classes da Shopee têm um sufixo que muda; por isso os seletores usam só o começo do nome, como `[class*="comment-container"]`.
+Todos os textos e seletores da página ficam **em um único arquivo**: `src/lib/selectors.js`. Se algum passo deixar de funcionar, ajuste o valor correspondente nesse arquivo (cada linha tem um comentário dizendo para que serve). A única exceção é o endereço das fotos da aba Sacola, `IMG_BASE`, em `src/live/bag.js`. Outra exceção é a ponte da aba Sacola, `src/live/pageBridge.js`: ela só aceita o caminho `/webapi/v1/session/<número>/host/items`; se a Shopee mudar esse endereço, ajuste o caminho permitido nesse arquivo e o endereço usado em `src/live/bag.js`. Esta é a versão 0.3.1 (a ponte entrou nela). Depois recarregue a extensão em `chrome://extensions` e recarregue a live. As classes da Shopee têm um sufixo que muda; por isso os seletores usam só o começo do nome, como `[class*="comment-container"]`.
 
 ## Desenvolvimento
 

@@ -237,3 +237,107 @@ test('normalizeBag ignora itens sem número (id) válido, em vez de mostrar NaN'
   assert.deepStrictEqual(r.items.map((c) => c.n), [2, 4]);
   assert.ok(r.items.every((c) => Number.isFinite(c.n)));
 });
+
+// ---------- Ponte com a página (makeBridgeFetch) ----------
+
+function fakeWin() {
+  const listeners = [];
+  const w = {
+    location: { origin: 'https://live.shopee.com.br' },
+    posted: [],
+    listeners,
+    addEventListener(t, fn) { if (t === 'message') listeners.push(fn); },
+    removeEventListener(t, fn) { const i = listeners.indexOf(fn); if (i >= 0) listeners.splice(i, 1); },
+    postMessage(msg, origin) { w.posted.push({ msg, origin }); },
+    answer(data, over) {
+      const ev = { source: w, origin: w.location.origin, data, ...over };
+      for (const fn of [...listeners]) fn(ev);
+    },
+  };
+  return w;
+}
+const SID = '7898272';
+const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+
+test('makeBridgeFetch: resolve com a resposta da página e remove o ouvinte', async () => {
+  const w = fakeWin();
+  const p = bag.makeBridgeFetch(w)(`https://live.shopee.com.br/webapi/v1/session/${SID}/host/items?visible=true`, { credentials: 'include' });
+  assert.strictEqual(w.posted.length, 1);
+  const { msg, origin } = w.posted[0];
+  assert.strictEqual(origin, 'https://live.shopee.com.br');
+  assert.strictEqual(msg.source, 'sla-ext');
+  assert.strictEqual(msg.type, 'fetch');
+  assert.strictEqual(msg.path, `/webapi/v1/session/${SID}/host/items?visible=true`);
+  assert.ok(msg.id);
+  w.answer({ source: 'sla-bridge', id: msg.id, ok: true, status: 200, text: '{"x":5}' });
+  const res = await p;
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.status, 200);
+  assert.deepStrictEqual(await res.json(), { x: 5 });
+  assert.strictEqual(await res.text(), '{"x":5}');
+  assert.strictEqual(w.listeners.length, 0);
+});
+
+test('makeBridgeFetch: aceita caminho relativo', async () => {
+  const w = fakeWin();
+  const p = bag.makeBridgeFetch(w)('/webapi/v1/session/1/host/items?a=1');
+  assert.strictEqual(w.posted[0].msg.path, '/webapi/v1/session/1/host/items?a=1');
+  w.answer({ source: 'sla-bridge', id: w.posted[0].msg.id, ok: true, status: 200, text: '{}' });
+  await p;
+});
+
+test('makeBridgeFetch: ignora resposta de outro id, outra origem, outra fonte ou outra janela', async () => {
+  const w = fakeWin();
+  const p = bag.makeBridgeFetch(w, { timeoutMs: 200 })(`/webapi/v1/session/${SID}/host/items`);
+  const id = w.posted[0].msg.id;
+  const boa = { source: 'sla-bridge', id, ok: true, status: 200, text: '{"v":1}' };
+  w.answer({ ...boa, id: 'outro' });
+  w.answer({ ...boa, source: 'sla-ext' });
+  w.answer(boa, { origin: 'https://evil.com' });
+  w.answer(boa, { source: {} });
+  w.answer(null);
+  assert.strictEqual(w.listeners.length, 1); // nenhuma foi aceita
+  w.answer(boa);
+  assert.deepStrictEqual(await (await p).json(), { v: 1 });
+  assert.strictEqual(w.listeners.length, 0);
+});
+
+test('makeBridgeFetch: sem resposta, rejeita e não deixa ouvinte', async () => {
+  const w = fakeWin();
+  await assert.rejects(bag.makeBridgeFetch(w, { timeoutMs: 20 })(`/webapi/v1/session/${SID}/host/items`), /sem resposta da página/);
+  assert.strictEqual(w.listeners.length, 0);
+});
+
+test('makeBridgeFetch: resposta de falha da ponte rejeita com o erro dela', async () => {
+  const w = fakeWin();
+  const p = bag.makeBridgeFetch(w)(`/webapi/v1/session/${SID}/host/items`);
+  w.answer({ source: 'sla-bridge', id: w.posted[0].msg.id, ok: false, status: 0, text: '', error: 'caminho nao permitido' });
+  await assert.rejects(p, /caminho nao permitido/);
+  assert.strictEqual(w.listeners.length, 0);
+  const q = bag.makeBridgeFetch(w)(`/webapi/v1/session/${SID}/host/items`);
+  w.answer({ source: 'sla-bridge', id: w.posted[1].msg.id, ok: false, status: 0, text: '' });
+  await assert.rejects(q, /ponte indisponível/);
+});
+
+test('readBag com a ponte: 403 vira motivo http com detalhe 403', async () => {
+  const w = fakeWin();
+  const p = bag.readBag(SID, bag.makeBridgeFetch(w));
+  await delay(0);
+  w.answer({ source: 'sla-bridge', id: w.posted[0].msg.id, ok: false, status: 403, text: 'proibido' });
+  assert.deepStrictEqual(await p, { ok: false, reason: 'http', detail: '403' });
+});
+
+test('readBag com a ponte: sem resposta vira motivo rede com a mensagem', async () => {
+  const w = fakeWin();
+  const r = await bag.readBag(SID, bag.makeBridgeFetch(w, { timeoutMs: 20 }));
+  assert.deepStrictEqual(r, { ok: false, reason: 'rede', detail: 'sem resposta da página' });
+});
+
+test('readBag com a ponte: 200 devolve a sacola', async () => {
+  const w = fakeWin();
+  const p = bag.readBag(SID, bag.makeBridgeFetch(w));
+  await delay(0);
+  w.answer({ source: 'sla-bridge', id: w.posted[0].msg.id, ok: true, status: 200, text: JSON.stringify(RESP) });
+  const r = await p;
+  assert.strictEqual(r.ok, true);
+});

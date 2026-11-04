@@ -103,6 +103,15 @@ test('nextState: erro mantém a lista e soma falhas; três seguidas', () => {
   assert.strictEqual(s.falhas, 3);
 });
 
+test('nextState: texto do erro inclui o detalhe quando existe', () => {
+  const e = (r) => bagTab.nextState(bagTab.initialState(), r).erro;
+  assert.strictEqual(e({ ok: false, reason: 'http', detail: '403' }), 'a Shopee respondeu com erro (403)');
+  assert.strictEqual(e({ ok: false, reason: 'http' }), 'a Shopee respondeu com erro');
+  assert.strictEqual(e({ ok: false, reason: 'rede', detail: 'sem resposta da página' }), 'sem conexão (sem resposta da página)');
+  assert.strictEqual(e({ ok: false, reason: 'rede' }), 'sem conexão');
+  assert.strictEqual(e({ ok: false, reason: 'formato', detail: 'json' }), 'resposta inesperada');
+});
+
 // ---------- Revisão final: fotos que falharam (Importante 3) ----------
 
 test('renderBagTab: foto que já falhou não é pedida de novo (Set ou lista)', () => {
