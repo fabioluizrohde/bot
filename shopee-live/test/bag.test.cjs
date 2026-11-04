@@ -108,6 +108,8 @@ test('filterBag', () => {
 
 test('imageUrl', () => {
   assert.strictEqual(bag.imageUrl('sg-1'), bag.IMG_BASE + 'sg-1');
+  // Endereço conferido na página real em 2026-11-03: a Shopee devolve a foto (200, image/jpeg) em cf.shopee.com.br
+  assert.strictEqual(bag.imageUrl('br-11134207-7r98o-abc'), 'https://cf.shopee.com.br/file/br-11134207-7r98o-abc');
 });
 
 test('normalizeBag ignora elementos que não são objetos', () => {

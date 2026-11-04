@@ -2,9 +2,9 @@
 (function (root) {
   const SLA = (root.SLA = root.SLA || {});
 
-  // PROBE-PENDING: a resposta traz só o código da foto (ex.: "sg-11134201-..."); o endereço
-  // da foto ainda não foi confirmado na página real.
-  const IMG_BASE = 'https://down-br.img.susercontent.com/file/';
+  // A resposta traz só o código da foto (ex.: "br-11134207-7r98o-..."). Endereço conferido na página
+  // real em 2026-11-03: https://cf.shopee.com.br/file/<código> devolve a foto (200, image/jpeg).
+  const IMG_BASE = 'https://cf.shopee.com.br/file/';
 
   function imageUrl(hash) {
     return IMG_BASE + hash;

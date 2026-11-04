@@ -32,7 +32,7 @@ Em 2026-11-03 o fluxo do Lote foi testado numa live real e funcionou. Foram conf
 Ainda faltam estas conferências (itens marcados com `PROBE-PENDING` ou palpites):
 
 1. **Aviso de verificação (captcha):** confira que ele **não** faz a extensão pausar numa página normal da Shopee, e que **faz** pausar numa verificação de verdade. Se pausar pedindo "resolva e clique em Continuar" sem haver verificação na tela, o seletor está largo demais (ele pausaria todo ID): ajuste `captchaMarker` em `src/lib/selectors.js`.
-2. **Fotos da aba Sacola:** o endereço das fotos (`IMG_BASE` em `src/live/bag.js`) é um palpite. Se as fotos não aparecerem na aba Sacola, corrija só essa constante, olhando o endereço de uma foto na página.
+2. **Fotos da aba Sacola:** o endereço das fotos (`IMG_BASE` em `src/live/bag.js`, hoje `https://cf.shopee.com.br/file/`) foi conferido na página real em 2026-11-03. Se um dia as fotos pararem de aparecer, corrija só essa constante, olhando o endereço de uma foto na página.
 3. **Números da aba Sacola:** confira que os números dos cards batem com os da "Lista de produtos" da Shopee.
 4. **Aba Lote ativa:** confira que, com a aba Lote (e não a Sacola) ativa, a extensão não faz nenhuma chamada nova.
 5. **Preços da aba Sacola:** confira que os preços dos cartões batem com os da "Lista de produtos" da Shopee.
