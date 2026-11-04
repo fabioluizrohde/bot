@@ -64,11 +64,28 @@ test('renderBagTab: item esgotado/removido fica apagado e desligado; sem onerror
 
 test('renderBagTab: modo padrão é mostrar; mover vem desligado', () => {
   const html = bagTab.renderBagTab(base({ itens: [card(1)], total: 1 }));
-  assert.ok(/<button class="on"[^>]*data-modo="mostrar"|<button[^>]*data-modo="mostrar"[^>]*class="on"/.test(html) || /class="on"[^>]*data-act="bag-modo"[^>]*data-modo="mostrar"/.test(html));
+  assert.ok(html.includes('<button class="on" data-act="bag-modo" data-modo="mostrar">Mostrar</button>'));
   const mover = html.match(/<button[^>]*data-modo="mover"[^>]*>/)[0];
   assert.ok(mover.includes('disabled') && mover.includes('title="em breve"') && !mover.includes('on"'));
   const m2 = bagTab.renderBagTab(base({ itens: [card(1)], total: 1, modo: 'mover' }));
   assert.ok(/<button[^>]*data-modo="mover"[^>]*disabled/.test(m2));
+});
+
+test('renderBagTab: title leva o preço antigo quando existe, tudo escapado', () => {
+  const com = bagTab.renderBagTab(base({ itens: [card(1, { name: 'Kit 6 Xícaras', price: 'R$19,90', priceBefore: 'R$29,90' })], total: 1 }));
+  assert.ok(com.includes('title="Kit 6 Xícaras — R$19,90 (antes R$29,90)"'));
+  const sem = bagTab.renderBagTab(base({ itens: [card(1)], total: 1 }));
+  assert.ok(sem.includes('title="Produto 1 — R$10,00"') && !sem.includes('antes'));
+  const esc = bagTab.renderBagTab(base({ itens: [card(1, { priceBefore: 'R$"<b>' })], total: 1 }));
+  assert.ok(esc.includes('(antes R$&quot;&lt;b&gt;)') && !esc.includes('R$"<b>'));
+});
+
+test('renderBagTab: noAr aceita número ou texto e null nunca marca', () => {
+  const um = [card(5)];
+  assert.ok(bagTab.renderBagTab(base({ itens: um, total: 1, noAr: 5 })).includes('tile noar'));
+  assert.ok(bagTab.renderBagTab(base({ itens: um, total: 1, noAr: '5' })).includes('tile noar'));
+  assert.ok(!bagTab.renderBagTab(base({ itens: [card(1, { itemId: null })], total: 1, noAr: null })).includes('noar'));
+  assert.ok(!bagTab.renderBagTab(base({ itens: [card(1, { itemId: undefined })], total: 1 })).includes('noar'));
 });
 
 test('renderBagTab: noAr marca só o tile certo', () => {

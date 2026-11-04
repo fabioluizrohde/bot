@@ -62,7 +62,7 @@
   function tileHtml(c, comErro, m) {
     const desligado = c.outOfStock || c.removed;
     const cls = ['tile'];
-    if (c.itemId === m.noAr) cls.push('noar');
+    if (m.noAr != null && c.itemId != null && String(c.itemId) === String(m.noAr)) cls.push('noar');
     if (desligado) cls.push('apagado');
     if (m.trocando) cls.push('trocando');
     // Sem onerror embutido (a página pode bloquear): o painel esconde a foto que falhar.
@@ -70,7 +70,7 @@
       ? `<img src="${esc(SLA.bag.imageUrl(c.image))}" alt="" crossorigin="anonymous" data-img="${esc(c.image)}">`
       : '';
     const off = desligado || m.trocando ? ' disabled' : '';
-    return `<button class="${cls.join(' ')}" data-act="bag-tile" data-n="${esc(c.n)}" title="${esc(c.name)} — ${esc(c.price)}"${off}>${foto}<span class="tn">${esc(c.n)}</span></button>`;
+    return `<button class="${cls.join(' ')}" data-act="bag-tile" data-n="${esc(c.n)}" title="${esc(c.name)} — ${esc(c.price)}${c.priceBefore ? ` (antes ${esc(c.priceBefore)})` : ''}"${off}>${foto}<span class="tn">${esc(c.n)}</span></button>`;
   }
 
   function renderBagTab(m) {
@@ -101,7 +101,7 @@
     // A aba aparece sempre na página da live; a sessão é lida da URL a cada leitura
     // (a página pode trocar de live sem recarregar).
     if (!/^\/pc\/live/.test(location.pathname)) return;
-    if (!SLA.panel) return;
+    if (!SLA.panel || typeof SLA.panel.registerArea !== 'function') return;
     let state = initialState();
     let timer = null;
     let lendo = false;
@@ -143,8 +143,7 @@
 
     function render() { return renderBagTab({ ...state, fotosComErro: fotosQueFalharam }); }
 
-    const registrar = SLA.panel.registerArea || SLA.panel.registerTab;
-    registrar('sacola', render, {
+    SLA.panel.registerArea('sacola', render, {
       actions: {
         'bag-q': (el) => { state = { ...state, query: el.value }; SLA.panel.redraw(); },
         'bag-tile': () => {}, // a Task 8 liga o Mostrar
@@ -160,7 +159,7 @@
         if (!ativa) return;
         if (Date.now() - ultimaLeitura > FRESCO_MS) ler();
         timer = setInterval(() => {
-          if (shouldPoll({ ativa: (SLA.panel.isAreaVisible || SLA.panel.isTabActive)('sacola'), escondida: document.hidden, falhas: state.falhas })) ler();
+          if (shouldPoll({ ativa: SLA.panel.isAreaVisible('sacola'), escondida: document.hidden, falhas: state.falhas })) ler();
         }, POLL_MS);
       },
     });
