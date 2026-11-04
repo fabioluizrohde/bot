@@ -100,13 +100,27 @@
     return null;
   }
 
-  // Aba que deve ficar ativa depois de uma mensagem do coordenador. Com o lote pronto para
-  // marcar, a aba Lote aparece (é nela que surgem os pedidos de clique e os erros da marcação).
-  function tabAfterMessage(msg, tab) {
-    return msg && msg.type === 'batch:resolved' ? 'lote' : tab;
+  const FASES = { resolving: 'buscando…', adding: 'adicionando…', done: 'pronto' };
+  const contaIds = (n) => `${n} ${n === 1 ? 'ID' : 'IDs'}`;
+
+  // Resumo de uma linha do Lote recolhido: "Lote: vazio", "Lote: 3 IDs", "Lote: 3 IDs · adicionando…".
+  // Lote em andamento manda; depois dele, os IDs selecionados; lote terminado sem IDs novos aparece como "pronto".
+  function loteSummary(batch, ids) {
+    const itens = batch && Array.isArray(batch.items) ? batch.items.length : 0;
+    const sel = Array.isArray(ids) ? ids.length : 0;
+    if (batch && batch.phase !== 'done' && itens) return `Lote: ${contaIds(itens)}${FASES[batch.phase] ? ' · ' + FASES[batch.phase] : ''}`;
+    if (sel) return `Lote: ${contaIds(sel)}`;
+    if (batch && itens) return `Lote: ${contaIds(itens)} · ${FASES.done}`;
+    return 'Lote: vazio';
   }
 
-  // Rolagem a devolver depois de redesenhar: na mesma aba, a de antes; ao trocar de aba, o topo.
+  // O Lote precisa ficar aberto? Sim quando há aviso (ex.: "Clique no bloco Produtos", erro da
+  // marcação) ou o lote está pausado: essas mensagens nunca podem ficar escondidas.
+  function shouldExpandLote(aviso, batch) {
+    return !!(aviso && String(aviso).trim()) || !!(batch && batch.paused);
+  }
+
+  // Rolagem a devolver depois de redesenhar: no mesmo bloco, a de antes; ao trocar de conteúdo, o topo.
   function scrollToRestore(prevTab, curTab, savedTop) {
     return prevTab === curTab && Number.isFinite(savedTop) ? savedTop : 0;
   }
@@ -121,49 +135,54 @@
   // ---------- Comportamento no navegador (sem teste automático) ----------
 
   // marcados: IDs que a extensão marcou e esperam o Confirmar; stopWatch: vigia do Confirmar ativa (ou null).
-  const state = { ids: [], batch: null, openIn: 'tab', aviso: '', tab: 'lote', marcando: false, marcados: [], stopWatch: null };
-  const extraTabs = []; // {key, label, render, opts}
-  const BUILTIN_ACTS = ['tab', 'rm', 'openIn', 'start', 'reopen', 'clear', 'mark'];
+  // loteRecolhido: o Fabio recolheu o Lote (só o resumo aparece); menuAberto: menu do ⚙ aberto.
+  const state = { ids: [], batch: null, openIn: 'tab', aviso: '', loteRecolhido: false, menuAberto: false, marcando: false, marcados: [], stopWatch: null };
+  const areas = []; // {key, render, opts, ativada}: blocos abaixo do Lote (ex.: Sacola)
+  const BUILTIN_ACTS = ['menu', 'toggle-lote', 'rm', 'openIn', 'start', 'reopen', 'clear', 'mark'];
   let shadow = null;
-  let abaDesenhada = null; // aba do último draw(), para saber se a rolagem deve ser mantida
+  let desenhado = false; // o painel já foi desenhado ao menos uma vez
+  // O que .lote e .area mostravam no último draw(), para saber se a rolagem de cada um deve ser mantida.
+  let loteDesenhado = null;
+  let areaDesenhada = null;
 
   const send = (msg) => chrome.runtime.sendMessage(msg);
 
-  // opts.actions: {data-act: (el, ev) => void}; opts.onActive(ativa:boolean): aviso ao entrar/sair da aba.
-  function registerTab(key, label, render, opts) {
-    const i = extraTabs.findIndex((t) => t.key === key);
-    const t = { key, label, render, opts: opts || {} };
-    if (i >= 0) extraTabs[i] = t;
-    else extraTabs.push(t);
+  // opts.actions: {data-act: (el, ev) => void}; opts.onActive(true): avisado quando a área
+  // passa a aparecer no painel (no primeiro desenho, ou na hora se o painel já está montado).
+  function registerArea(key, render, opts) {
+    const i = areas.findIndex((a) => a.key === key);
+    const a = { key, render, opts: opts || {}, ativada: false };
+    if (i >= 0) areas[i] = a;
+    else areas.push(a);
     if (shadow) draw();
   }
 
+  // Alias para o bagTab.js atual (o rótulo da aba não é mais usado).
+  function registerTab(key, _label, render, opts) { registerArea(key, render, opts); }
+
   function redraw() { draw(); }
 
-  function isTabActive(key) { return state.tab === key; }
+  function isAreaVisible(key) { return !!shadow && desenhado && areas.some((a) => a.key === key); }
 
-  // Avisa a aba extra (se tiver onActive) sem deixar um erro dela quebrar o painel.
-  function notifyActive(key, active) {
-    const t = extraTabs.find((x) => x.key === key);
-    if (t && t.opts && typeof t.opts.onActive === 'function') {
-      try { t.opts.onActive(active); } catch (e) { console.error(`[SLA] onActive da aba "${key}" falhou`, e); }
+  const isTabActive = isAreaVisible;
+
+  // Avisa (uma vez) as áreas ainda não avisadas de que estão à vista, sem deixar um erro delas quebrar o painel.
+  function notifyPendingActive() {
+    for (const a of areas) {
+      if (a.ativada) continue;
+      a.ativada = true;
+      if (typeof a.opts.onActive === 'function') {
+        try { a.opts.onActive(true); } catch (e) { console.error(`[SLA] onActive da área "${a.key}" falhou`, e); }
+      }
     }
   }
 
-  function setTab(key) {
-    if (key === state.tab) return;
-    const anterior = state.tab;
-    state.tab = key;
-    notifyActive(anterior, false);
-    notifyActive(key, true);
-  }
-
-  // Chama a ação de uma aba extra, se existir; erro dela é registrado no console e não quebra o painel.
+  // Chama a ação de uma área extra, se existir; erro dela é registrado no console e não quebra o painel.
   function runExtra(el, ev) {
     const act = el.dataset.act;
-    const tab = extraTabs.find((t) => findExtraAction([t], act));
+    const tab = areas.find((t) => findExtraAction([t], act));
     if (!tab) return false;
-    const log = (e) => console.error(`[SLA] ação "${act}" da aba "${tab.key}" falhou`, e);
+    const log = (e) => console.error(`[SLA] ação "${act}" da área "${tab.key}" falhou`, e);
     try {
       const r = tab.opts.actions[act](el, ev); // síncrona continua síncrona
       if (r && typeof r.then === 'function') r.then(null, log); // async que rejeita também é registrada
@@ -201,21 +220,51 @@
     return h;
   }
 
-  function renderConfig() {
+  // Menu do ⚙ (as opções que antes ficavam na aba Config).
+  function renderMenu() {
     return `<h4>Abrir a Shopee em</h4>
       <label><input type="radio" name="openIn" data-act="openIn" value="tab" ${state.openIn === 'tab' ? 'checked' : ''}> aba</label>
       <label><input type="radio" name="openIn" data-act="openIn" value="window" ${state.openIn === 'window' ? 'checked' : ''}> janela</label>`;
+  }
+
+  function renderHead(recolhido) {
+    return `<b class="titulo">Assistente de Live</b>
+      <button class="hb" data-act="menu" title="Configurações" aria-expanded="${state.menuAberto}">⚙</button>
+      <button class="hb" data-act="toggle-lote" title="${recolhido ? 'Mostrar o lote' : 'Recolher o lote'}">${recolhido ? '▸' : '▾'}</button>`;
+  }
+
+  // Desenha uma área extra sem deixar um erro dela apagar o painel inteiro.
+  function renderArea(a) {
+    try { return `<section data-area="${esc(a.key)}">${a.render()}</section>`; } catch (e) {
+      console.error(`[SLA] desenho da área "${a.key}" falhou`, e);
+      return `<section data-area="${esc(a.key)}"><p class="warn">Esta parte do painel falhou ao aparecer.</p></section>`;
+    }
+  }
+
+  // Altura de referência do painel para limitar o Lote: a altura fixa do painel, se houver;
+  // senão o teto do CSS (80% da janela). Não usa a altura medida, que depende do próprio Lote.
+  function alturaPainel(box) {
+    const fixa = box && box.style ? parseFloat(box.style.height) : NaN;
+    if (Number.isFinite(fixa) && fixa > 0) return fixa;
+    const h = typeof innerHeight === 'number' ? innerHeight : NaN;
+    return Number.isFinite(h) && h > 0 ? Math.round(0.8 * h) : NaN;
   }
 
   const CSS = `
     :host{all:initial}
     .box{position:fixed;top:80px;right:16px;width:300px;max-height:80vh;display:flex;flex-direction:column;z-index:2147483647;
       background:#fff;color:#222;font:13px/1.4 sans-serif;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.35);overflow:hidden}
-    .head{background:#ee4d2d;color:#fff;padding:8px 10px;cursor:move;user-select:none}
-    .tabs{display:flex;border-bottom:1px solid #ddd}
-    .tabs button{flex:1;border:0;background:#f6f6f6;padding:6px;cursor:pointer}
-    .tabs button.on{background:#fff;font-weight:bold;border-bottom:2px solid #ee4d2d}
-    .body{padding:10px;overflow:auto}
+    .head{flex:none;display:flex;align-items:center;gap:4px;background:#ee4d2d;color:#fff;padding:6px 8px 6px 10px;cursor:move;user-select:none}
+    .head .titulo{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .head .hb{background:none;border:0;color:#fff;padding:2px 6px;font-size:15px;line-height:1;border-radius:4px}
+    .head .hb:hover{background:rgba(255,255,255,.2)}
+    .menu{flex:none;padding:6px 10px;background:#fafafa;border-bottom:1px solid #ddd}
+    .menu h4{margin:2px 0 4px}
+    .lote{flex:none;max-height:35%;overflow:auto;padding:0 10px 8px;border-bottom:2px solid #eee}
+    .lote.recolhido{padding:6px 10px}
+    .area{flex:1;min-height:0;overflow:auto;padding:0 10px 10px}
+    .area:empty{display:none}
+    .grip{flex:none}
     h4{margin:8px 0 4px}
     ul{list-style:none;margin:0 0 8px;padding:0}
     li{display:flex;align-items:center;gap:6px;padding:2px 0}
@@ -238,29 +287,48 @@
 
   function draw() {
     if (!shadow) return;
-    const tabs = [{ key: 'lote', label: 'Lote', render: renderLote }, ...extraTabs, { key: 'config', label: 'Config', render: renderConfig }];
-    if (!tabs.some((t) => t.key === state.tab)) setTab('lote');
-    const cur = tabs.find((t) => t.key === state.tab);
+    // Aviso ou pausa: o Lote abre sozinho (o pedido de clique e os erros nunca ficam escondidos).
+    if (state.loteRecolhido && shouldExpandLote(state.aviso, state.batch)) state.loteRecolhido = false;
+    const recolhido = state.loteRecolhido;
     // Guarda o foco (e o cursor) do campo marcado com data-focus-key, para a digitação não travar.
     const ae = shadow.activeElement;
     const focusKey = ae && ae.dataset ? ae.dataset.focusKey : null;
     const selStart = focusKey ? ae.selectionStart : null;
     const selEnd = focusKey ? ae.selectionEnd : null;
-    shadow.querySelector('.tabs').innerHTML = tabs
-      .map((t) => `<button data-act="tab" data-key="${esc(t.key)}" class="${t.key === state.tab ? 'on' : ''}">${esc(t.label)}</button>`)
-      .join('');
-    // Guarda a rolagem da lista: a atualização automática não pode jogar a lista para o topo.
-    const body = shadow.querySelector('.body');
-    const topo = body ? body.scrollTop : 0;
-    if (body) body.innerHTML = cur.render();
+    const box = shadow.querySelector('.box');
+    const head = shadow.querySelector('.head');
+    const menu = shadow.querySelector('.menu');
+    const lote = shadow.querySelector('.lote');
+    const area = shadow.querySelector('.area');
+    // Guarda a rolagem de cada bloco: a atualização automática não pode jogar as listas para o topo.
+    const topoLote = lote ? lote.scrollTop : 0;
+    const topoArea = area ? area.scrollTop : 0;
+    const chaveLote = recolhido ? 'lote:recolhido' : 'lote';
+    const chaveArea = areas.map((a) => a.key).join(',');
+    if (head) head.innerHTML = renderHead(recolhido);
+    if (menu) {
+      menu.hidden = !state.menuAberto;
+      menu.innerHTML = state.menuAberto ? renderMenu() : '';
+    }
+    if (lote) {
+      lote.classList.toggle('recolhido', recolhido);
+      lote.innerHTML = recolhido ? `<span class="mut">${esc(loteSummary(state.batch, state.ids))}</span>` : renderLote();
+      const max = SLA.layout && typeof SLA.layout.loteMaxHeight === 'function' ? SLA.layout.loteMaxHeight(alturaPainel(box)) : NaN;
+      lote.style.maxHeight = Number.isFinite(max) && max > 0 ? max + 'px' : ''; // vazio: fica o 35% do CSS
+    }
+    if (area) area.innerHTML = areas.map(renderArea).join('');
     if (focusKey) {
       try {
         const novo = Array.from(shadow.querySelectorAll('[data-focus-key]')).find((e) => e.dataset.focusKey === focusKey);
         refocus(novo, selStart, selEnd);
       } catch (_) { /* ignora */ }
     }
-    if (body) body.scrollTop = scrollToRestore(abaDesenhada, state.tab, topo);
-    abaDesenhada = state.tab;
+    if (lote) lote.scrollTop = scrollToRestore(loteDesenhado, chaveLote, topoLote);
+    if (area) area.scrollTop = scrollToRestore(areaDesenhada, chaveArea, topoArea);
+    loteDesenhado = chaveLote;
+    areaDesenhada = chaveArea;
+    desenhado = true;
+    notifyPendingActive(); // áreas registradas antes da montagem: avisa depois do primeiro desenho
   }
 
   function stopWatching() {
@@ -340,7 +408,8 @@
 
   async function onAction(el, ev) {
     const act = el.dataset.act;
-    if (act === 'tab') { setTab(el.dataset.key); return draw(); }
+    if (act === 'menu') { state.menuAberto = !state.menuAberto; return draw(); }
+    if (act === 'toggle-lote') { state.loteRecolhido = !state.loteRecolhido; return draw(); }
     if (act === 'rm') { state.ids = removeId(state.ids, el.dataset.id); return draw(); }
     if (act === 'openIn') {
       state.openIn = el.value;
@@ -383,17 +452,15 @@
     if (!msg) return;
     if (msg.type === 'batch:update') setBatch(msg.batch);
     else if (msg.type === 'batch:resolved') {
+      // O Lote está sempre à vista; se houver aviso ou pausa, draw() o abre mesmo recolhido.
       setBatch(msg.batch);
-      // Mostra a aba Lote antes de marcar: o pedido de clique em "Produtos" e os erros
-      // aparecem nela (setTab também para a atualização da aba Sacola).
-      setTab(tabAfterMessage(msg, state.tab));
-      draw();
       markAll(); // marca sozinho; sem a Tarefa 8 só mostra o aviso
     }
   }
 
   function enableDrag(box, handle) {
     handle.addEventListener('mousedown', (e) => {
+      if (e.target && e.target.closest && e.target.closest('button')) return; // ⚙ e recolher não arrastam
       const r = box.getBoundingClientRect();
       const dx = e.clientX - r.left;
       const dy = e.clientY - r.top;
@@ -417,7 +484,8 @@
     const host = document.createElement('div');
     host.id = HOST_ID;
     shadow = host.attachShadow({ mode: 'open' });
-    shadow.innerHTML = `<style>${CSS}</style><div class="box"><div class="head"><b>Assistente de Live</b></div><div class="tabs"></div><div class="body"></div></div>`;
+    shadow.innerHTML = `<style>${CSS}</style><div class="box"><div class="head">${renderHead(false)}</div>`
+      + '<div class="menu" hidden></div><div class="lote"></div><div class="area"></div><div class="grip"></div></div>';
     enableDrag(shadow.querySelector('.box'), shadow.querySelector('.head'));
     shadow.addEventListener('click', (e) => {
       const el = e.target.closest && e.target.closest('[data-act]');
@@ -453,7 +521,7 @@
     draw();
   }
 
-  SLA.panel = { registerTab, redraw, isTabActive, findExtraAction, tabAfterMessage, scrollToRestore, refocus, shouldMount, isInsideChat, filterOutBatch, mergeIds, removeId, statusLabel, viewState, normalizeResults, planMarkResults, init };
+  SLA.panel = { registerArea, registerTab, redraw, isAreaVisible, isTabActive, findExtraAction, loteSummary, shouldExpandLote, scrollToRestore, refocus, shouldMount, isInsideChat, filterOutBatch, mergeIds, removeId, statusLabel, viewState, normalizeResults, planMarkResults, init };
   if (typeof module !== 'undefined' && module.exports) module.exports = SLA.panel;
 
   if (typeof document !== 'undefined' && typeof chrome !== 'undefined' && chrome.runtime) {

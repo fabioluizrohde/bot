@@ -149,13 +149,6 @@ test('findExtraAction: só chaves próprias (constructor/toString herdados não 
 
 // ---------- Revisão final: Importante 1 e 2 ----------
 
-test('tabAfterMessage: batch:resolved leva para a aba Lote; outras mensagens não mudam a aba', () => {
-  assert.strictEqual(P.tabAfterMessage({ type: 'batch:resolved' }, 'sacola'), 'lote');
-  assert.strictEqual(P.tabAfterMessage({ type: 'batch:resolved' }, 'lote'), 'lote');
-  assert.strictEqual(P.tabAfterMessage({ type: 'batch:update' }, 'sacola'), 'sacola');
-  assert.strictEqual(P.tabAfterMessage(null, 'config'), 'config');
-});
-
 test('scrollToRestore: mesma aba devolve a rolagem; troca de aba volta ao topo', () => {
   assert.strictEqual(P.scrollToRestore('sacola', 'sacola', 340), 340);
   assert.strictEqual(P.scrollToRestore('sacola', 'lote', 340), 0);
@@ -172,4 +165,41 @@ test('refocus: devolve o foco sem rolar e recoloca o cursor', () => {
   P.refocus({ focus: (o) => so.push(o) }, null, null); // sem setSelectionRange e sem cursor
   assert.deepStrictEqual(so, [{ preventScroll: true }]);
   P.refocus(null, 1, 1); // sem elemento: não quebra
+});
+
+// ---------- Painel sem abas: Lote fixo + área ----------
+
+test('loteSummary: vazio, só IDs e lote em andamento', () => {
+  assert.strictEqual(P.loteSummary(null, []), 'Lote: vazio');
+  assert.strictEqual(P.loteSummary(null, ['AAA-BBB-CCC', 'DDD-EEE-FFF', 'GGG-HHH-III']), 'Lote: 3 IDs');
+  assert.strictEqual(P.loteSummary(null, ['AAA-BBB-CCC']), 'Lote: 1 ID');
+  const l = B.createBatch(['AAA-BBB-CCC', 'DDD-EEE-FFF', 'GGG-HHH-III']);
+  const ad = P.loteSummary({ ...l, phase: 'adding' }, []);
+  assert.ok(ad.startsWith('Lote: 3 IDs'), ad);
+  assert.ok(ad.endsWith('adicionando…'), ad);
+  assert.ok(P.loteSummary(l, []).startsWith('Lote: 3 IDs'));
+});
+
+test('shouldExpandLote: aviso não vazio ou lote pausado', () => {
+  assert.strictEqual(P.shouldExpandLote('', null), false);
+  assert.strictEqual(P.shouldExpandLote('Clique no bloco…', null), true);
+  const l = B.createBatch(['AAA-BBB-CCC']);
+  assert.strictEqual(P.shouldExpandLote('', { ...l, paused: true }), true);
+  assert.strictEqual(P.shouldExpandLote('', l), false);
+  assert.strictEqual(P.shouldExpandLote(undefined, undefined), false);
+});
+
+test('API de áreas: registerArea, isAreaVisible, redraw e o alias registerTab', () => {
+  assert.strictEqual(typeof P.registerArea, 'function');
+  assert.strictEqual(typeof P.isAreaVisible, 'function');
+  assert.strictEqual(typeof P.redraw, 'function');
+  assert.strictEqual(typeof P.registerTab, 'function');
+  assert.strictEqual(typeof P.isTabActive, 'function');
+  assert.strictEqual(globalThis.SLA.panel.registerTab, P.registerTab);
+  assert.strictEqual(P.tabAfterMessage, undefined);
+  // Sem painel montado (node): registrar não quebra e a área não está visível.
+  P.registerArea('teste', () => '<p>x</p>', { actions: { 'teste-act': () => {} } });
+  assert.strictEqual(P.isAreaVisible('teste'), false);
+  assert.strictEqual(P.isTabActive('teste'), false);
+  assert.strictEqual(P.isAreaVisible('nao-existe'), false);
 });
