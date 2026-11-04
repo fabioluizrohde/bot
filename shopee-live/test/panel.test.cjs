@@ -234,3 +234,35 @@ test('API de áreas: registerArea, isAreaVisible, redraw e o alias registerTab',
   assert.strictEqual(P.isTabActive('teste'), false);
   assert.strictEqual(P.isAreaVisible('nao-existe'), false);
 });
+
+// ---------- Revisão final da parte 1: avisos do Lote no topo (Importante 1) ----------
+
+const idsN = (n) => Array.from({ length: n }, (_, i) => `AAA-BBB-${String(i).padStart(3, '0')}`.slice(0, 11));
+
+test('loteHtml: pausa e aviso aparecem ANTES das listas e dos botões, mesmo com 12 itens', () => {
+  const lote = { ...B.createBatch(idsN(12)), paused: true };
+  const html = P.loteHtml({ ids: ['XXX-YYY-ZZZ'], batch: lote, aviso: '3 marcados — confira e clique em Confirmar', marcando: false, watching: false });
+  const pausa = html.indexOf('<p class="warn">Pausado');
+  const aviso = html.indexOf('<p class="warn">3 marcados');
+  assert.ok(pausa >= 0 && aviso >= 0);
+  for (const marca of ['<h4>', '<ul>', 'data-act="start"', 'data-act="clear"', '<div class="row">']) {
+    const i = html.indexOf(marca);
+    assert.ok(i >= 0, marca);
+    assert.ok(pausa < i && aviso < i, `aviso antes de ${marca}`);
+  }
+  assert.strictEqual(html.split('<li>').length - 1, 13); // 1 ID + 12 do lote
+});
+
+test('loteHtml: sem aviso e sem pausa não há <p class="warn">; aviso é escapado', () => {
+  const lote = B.createBatch(idsN(3));
+  assert.ok(!P.loteHtml({ ids: [], batch: lote, aviso: '', marcando: false, watching: false }).includes('class="warn"'));
+  const html = P.loteHtml({ ids: [], batch: null, aviso: 'Clique no bloco <b>Produtos</b>', marcando: false, watching: false });
+  assert.ok(html.startsWith('<p class="warn">Clique no bloco &lt;b&gt;Produtos&lt;/b&gt;</p>'));
+});
+
+test('loteHtml: resto do conteúdo continua igual (botões por fase)', () => {
+  const html = P.loteHtml({ ids: ['XXX-YYY-ZZZ'], batch: null, aviso: '', marcando: false, watching: false });
+  assert.ok(html.startsWith('<h4>IDs encontrados no chat</h4><ul>'));
+  assert.ok(html.includes('<button class="pri" data-act="start" >Processar lote</button>'));
+  assert.ok(!html.includes('data-act="clear"'));
+});

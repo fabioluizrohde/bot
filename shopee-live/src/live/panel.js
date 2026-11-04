@@ -205,31 +205,41 @@
   const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ESC[c]);
 
-  function renderLote() {
-    const v = viewState(state.batch, state.ids.length, !!state.stopWatch);
-    let h = '<h4>IDs encontrados no chat</h4>';
-    if (state.ids.length) {
-      h += '<ul>' + state.ids
+  // HTML do Lote aberto (função pura). s: {ids, batch, aviso, marcando, watching}.
+  // A pausa e o aviso vêm PRIMEIRO: com muitos itens o Lote rola, e o pedido de clique em
+  // "Produtos" ou o "confira e clique em Confirmar" não podem ficar escondidos lá embaixo.
+  function loteHtml(s) {
+    const ids = (s && s.ids) || [];
+    const batch = (s && s.batch) || null;
+    const v = viewState(batch, ids.length, !!(s && s.watching));
+    let h = '';
+    if (batch && batch.paused) h += '<p class="warn">Pausado (verificação da Shopee). Resolva na aba da Shopee e continue.</p>';
+    if (s && s.aviso) h += `<p class="warn">${esc(s.aviso)}</p>`;
+    h += '<h4>IDs encontrados no chat</h4>';
+    if (ids.length) {
+      h += '<ul>' + ids
         .map((id) => `<li><code>${esc(id)}</code><button class="x" data-act="rm" data-id="${esc(id)}" title="Remover">✕</button></li>`)
         .join('') + '</ul>';
     } else {
       h += '<p class="mut">Selecione mensagens do chat com o mouse para listar os IDs.</p>';
     }
     h += `<button class="pri" data-act="start" ${v.canProcess ? '' : 'disabled'}>Processar lote</button>`;
-    if (state.batch) {
-      h += '<h4>Lote</h4><ul>' + state.batch.items
+    if (batch) {
+      h += '<h4>Lote</h4><ul>' + batch.items
         .map((i) => `<li><code>${esc(i.id)}</code> <span class="st">${esc(statusLabel(i.status))}</span>${i.name ? ` <span class="mut">${esc(i.name)}</span>` : ''}</li>`)
         .join('') + '</ul>';
-      if (state.batch.paused) h += '<p class="warn">Pausado (verificação da Shopee). Resolva na aba da Shopee e continue.</p>';
     }
     h += '<div class="row">';
     if (v.showRetomar) h += '<button data-act="reopen">Retomar</button>';
-    if (v.showMarcar) h += `<button class="pri" data-act="mark" ${state.marcando ? 'disabled' : ''}>Marcar na live</button>`;
+    if (v.showMarcar) h += `<button class="pri" data-act="mark" ${s.marcando ? 'disabled' : ''}>Marcar na live</button>`;
     if (v.showAguardando) h += '<span class="mut">Aguardando seu Confirmar…</span>';
     if (v.showLimpar) h += '<button data-act="clear">Limpar lote</button>';
     h += '</div>';
-    if (state.aviso) h += `<p class="warn">${esc(state.aviso)}</p>`;
     return h;
+  }
+
+  function renderLote() {
+    return loteHtml({ ...state, watching: !!state.stopWatch });
   }
 
   // Menu do ⚙ (as opções que antes ficavam na aba Config).
@@ -600,7 +610,7 @@
     draw();
   }
 
-  SLA.panel = { registerArea, registerTab, redraw, isAreaVisible, isTabActive, findExtraAction, loteSummary, shouldExpandLote, nextLoteExpansion, scrollToRestore, refocus, shouldMount, isInsideChat, filterOutBatch, mergeIds, removeId, statusLabel, viewState, normalizeResults, planMarkResults, init };
+  SLA.panel = { registerArea, registerTab, redraw, isAreaVisible, isTabActive, findExtraAction, loteHtml, loteSummary, shouldExpandLote, nextLoteExpansion, scrollToRestore, refocus, shouldMount, isInsideChat, filterOutBatch, mergeIds, removeId, statusLabel, viewState, normalizeResults, planMarkResults, init };
   if (typeof module !== 'undefined' && module.exports) module.exports = SLA.panel;
 
   if (typeof document !== 'undefined' && typeof chrome !== 'undefined' && chrome.runtime) {

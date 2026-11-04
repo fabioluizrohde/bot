@@ -15,6 +15,8 @@ Versão 0.4.0. Ajuda quem apresenta lives da Shopee Brasil a transformar **IDs d
 
 A **sacola da live** aparece no painel como uma grade de fotos numeradas, e um clique numa foto coloca aquele produto no ar (modo Mostrar). Detalhes abaixo. **Adicionar o lote pelo painel** e **Mover para cima** ficam para uma próxima etapa.
 
+O Mostrar usa uma chamada interna da Shopee: leia o [aviso de risco](#aviso-de-risco) abaixo.
+
 ## O painel
 
 - **Maior e ajustável:** abre com cerca de 440 px de largura e 85% da altura da janela. Arraste o **canto inferior direito** para mudar o tamanho e o **cabeçalho** (a barra laranja) para mover. A extensão lembra o tamanho e a posição (mesmo depois de recarregar a página).
@@ -37,9 +39,9 @@ Mostra os produtos da sacola da live, **numerados**. No topo há um contador com
 - **"Lista desatualizada"** quer dizer que a última leitura falhou e o que você vê é a última lista que deu certo. Ela some quando uma leitura nova funciona.
 - Se a Shopee mudar algo, o painel mostra uma mensagem de erro (por exemplo "sem conexão (sem resposta da página)") e o resto da extensão continua funcionando.
 
-## Modo MOSTRAR (colocar no ar pela foto)
+## Modo Mostrar (colocar no ar pela foto)
 
-Acima da grade há o seletor de modo: **MOSTRAR** (o padrão) e **MOVER P/ CIMA**, que está marcado "em breve" e fica desativado.
+Acima da grade há o seletor de modo: **Mostrar** (o padrão) e **Mover**, que fica desativado (ao passar o mouse aparece "em breve").
 
 No modo Mostrar, **um clique numa foto coloca aquele produto no ar**. Regras de segurança:
 
