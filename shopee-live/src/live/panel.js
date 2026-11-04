@@ -515,15 +515,18 @@
     const x0 = e.clientX;
     const y0 = e.clientY;
     const move = (ev) => {
+      if (ev.buttons === 0) return up(); // soltou fora da janela ou sobre um iframe: o mouseup se perdeu
       try { aplicarRect(box, calc(inicio, ev.clientX - x0, ev.clientY - y0, window)); } catch (_) { /* ignora */ }
     };
     const up = () => {
       document.removeEventListener('mousemove', move, true);
       document.removeEventListener('mouseup', up, true);
+      window.removeEventListener('blur', up, true);
       salvarRectDepois();
     };
     document.addEventListener('mousemove', move, true);
     document.addEventListener('mouseup', up, true);
+    window.addEventListener('blur', up, true);
   }
 
   function enableDrag(box, handle, grip) {
