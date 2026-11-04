@@ -157,6 +157,26 @@
   // para chegar o veredito da própria ponte (inclusive "tempo esgotado") antes de a extensão desistir.
   const SHOW_TIMEOUT_MS = 20000;
 
+  // Resposta da ponte a um pedido de escrita -> resultado. Sucesso só com HTTP 2xx e err_code 0.
+  function interpretWrite(d) {
+    if (d.ok === false && d.status === 0) {
+      if (d.error === 'pedido recusado' || d.error === 'pedido invalido') return { ok: false, reason: 'recusado' };
+      return { ok: false, reason: 'rede', detail: String(d.error || 'ponte indisponível') };
+    }
+    if (!d.ok) return { ok: false, reason: 'http', detail: String(Number(d.status) || 0) };
+    let json;
+    try {
+      json = JSON.parse(String(d.text === undefined || d.text === null ? '' : d.text));
+    } catch (e) {
+      return { ok: false, reason: 'http', detail: 'resposta inesperada' };
+    }
+    if (!json || typeof json !== 'object') return { ok: false, reason: 'http', detail: 'resposta inesperada' };
+    if (json.err_code !== 0) return { ok: false, reason: 'http', detail: 'err_code ' + json.err_code };
+    return { ok: true };
+  }
+
+  const ADD_MAX_ITEMS = 20;
+
   // Manda a Shopee mostrar o produto na live (pela ponte). Nunca lança nem rejeita.
   async function showItem(sessionId, card, win, opts) {
     try {
@@ -176,20 +196,35 @@
       } catch (e) {
         return { ok: false, reason: 'rede', detail: String((e && e.message) || e) };
       }
-      if (d.ok === false && d.status === 0) {
-        if (d.error === 'pedido recusado' || d.error === 'pedido invalido') return { ok: false, reason: 'recusado' };
-        return { ok: false, reason: 'rede', detail: String(d.error || 'ponte indisponível') };
+      return interpretWrite(d);
+    } catch (e) {
+      return { ok: false, reason: 'rede', detail: String((e && e.message) || e) };
+    }
+  }
+
+  // Adiciona produtos à sacola (pela ponte, PUT add_items). entries: [{shopId, itemId}], 1 a 20, sem repetir.
+  // Nunca lança nem rejeita. Resultados: {ok:true} | {ok:false, reason:'recusado'|'rede'|'http', detail}.
+  // Atenção: 'rede' (inclusive por tempo esgotado) NÃO prova que nada foi adicionado: quem chama deve reler a sacola.
+  async function addItems(sessionId, entries, win, opts) {
+    try {
+      const ok = (n) => typeof n === 'number' && Number.isSafeInteger(n) && n > 0;
+      if (typeof sessionId !== 'string' || !/^\d+$/.test(sessionId)
+        || !Array.isArray(entries) || entries.length < 1 || entries.length > ADD_MAX_ITEMS
+        || !entries.every((e) => e && ok(e.shopId) && ok(e.itemId))
+        || new Set(entries.map((e) => e.itemId)).size !== entries.length) {
+        return { ok: false, reason: 'recusado' };
       }
-      if (!d.ok) return { ok: false, reason: 'http', detail: String(Number(d.status) || 0) };
-      let json;
+      const w = win || (typeof window !== 'undefined' ? window : null);
+      if (!w) return { ok: false, reason: 'rede', detail: 'sem janela' };
+      const timeoutMs = (opts && opts.timeoutMs) || SHOW_TIMEOUT_MS;
+      const body = { items: entries.map((e) => ({ shop_id: e.shopId, item_id: e.itemId })) };
+      let d;
       try {
-        json = JSON.parse(String(d.text === undefined || d.text === null ? '' : d.text));
+        d = await bridgeRoundTrip(w, { type: 'add', path: `/webapi/v1/session/${sessionId}/add_items`, body }, timeoutMs);
       } catch (e) {
-        return { ok: false, reason: 'http', detail: 'resposta inesperada' };
+        return { ok: false, reason: 'rede', detail: String((e && e.message) || e) };
       }
-      if (!json || typeof json !== 'object') return { ok: false, reason: 'http', detail: 'resposta inesperada' };
-      if (json.err_code !== 0) return { ok: false, reason: 'http', detail: 'err_code ' + json.err_code };
-      return { ok: true };
+      return interpretWrite(d);
     } catch (e) {
       return { ok: false, reason: 'rede', detail: String((e && e.message) || e) };
     }
@@ -236,6 +271,6 @@
     }
   }
 
-  SLA.bag = { IMG_BASE, imageUrl, sessionIdFromHref, formatPrice, normalizeBag, filterBag, readBag, makeBridgeFetch, showItem, SHOW_TIMEOUT_MS };
+  SLA.bag = { IMG_BASE, imageUrl, sessionIdFromHref, formatPrice, normalizeBag, filterBag, readBag, makeBridgeFetch, showItem, addItems, ADD_MAX_ITEMS, SHOW_TIMEOUT_MS };
   if (typeof module !== 'undefined' && module.exports) module.exports = SLA.bag;
 })(typeof window !== 'undefined' ? window : globalThis);

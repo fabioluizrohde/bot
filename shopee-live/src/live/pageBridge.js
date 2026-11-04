@@ -1,9 +1,11 @@
 // Ponte com a página: roda no mundo da própria página da live (manifest "world": "MAIN").
 // A Shopee recusa (403) pedidos feitos direto pela extensão; o fetch da própria página funciona.
-// Esta ponte faz só DOIS tipos de pedido, ambos restritos:
+// Esta ponte faz só TRÊS tipos de pedido, todos restritos:
 //  - leitura (GET, fetch da página): a lista da sacola;
 //  - escrita (POST, XMLHttpRequest da página): "Mostrar" um item, em /session/<n>/show, com o
-//    corpo validado (o item exatamente como veio da lista da sacola).
+//    corpo validado (o item exatamente como veio da lista da sacola);
+//  - escrita (PUT, XMLHttpRequest da página): adicionar à sacola, em /session/<n>/add_items, só com
+//    {items:[{shop_id,item_id}]} (até 20, inteiros positivos).
 // Não copia nem inventa cabeçalhos de segurança (só Content-Type). Não depende de nenhum outro
 // arquivo da extensão.
 (function () {
@@ -53,13 +55,8 @@
     }
   }
 
-  function handleShowRequest(data, getXhr) {
-    if (!data || typeof data !== 'object' || data.source !== 'sla-ext' || data.type !== 'show') {
-      return Promise.resolve(reply(data && typeof data === 'object' ? data.id : undefined, { error: 'pedido invalido' }));
-    }
-    if (!isAllowedShowPath(data.path) || !validateShowBody(data.body)) {
-      return Promise.resolve(reply(data.id, { error: 'pedido recusado' }));
-    }
+  // Pedido de escrita pela XMLHttpRequest da página, com método e corpo já validados por quem chama.
+  function xhrWrite(method, data, getXhr) {
     return new Promise((resolve) => {
       let feito = false;
       const fim = (r) => { if (!feito) { feito = true; resolve(r); } };
@@ -72,7 +69,7 @@
         x.onerror = () => fim(reply(data.id, { error: 'erro de rede' }));
         x.ontimeout = () => fim(reply(data.id, { error: 'tempo esgotado' }));
         x.onabort = () => fim(reply(data.id, { error: 'cancelado' }));
-        x.open('POST', data.path, true);
+        x.open(method, data.path, true);
         x.setRequestHeader('Content-Type', 'application/json;charset=UTF-8');
         x.withCredentials = true;
         x.timeout = 15000;
@@ -83,10 +80,62 @@
     });
   }
 
+  function handleShowRequest(data, getXhr) {
+    if (!data || typeof data !== 'object' || data.source !== 'sla-ext' || data.type !== 'show') {
+      return Promise.resolve(reply(data && typeof data === 'object' ? data.id : undefined, { error: 'pedido invalido' }));
+    }
+    if (!isAllowedShowPath(data.path) || !validateShowBody(data.body)) {
+      return Promise.resolve(reply(data.id, { error: 'pedido recusado' }));
+    }
+    return xhrWrite('POST', data, getXhr);
+  }
+
+  // ---- Escrita restrita: adicionar à sacola (PUT add_items) ----
+  // Conferido na live real em 2026-11-04: PUT /webapi/v1/session/<n>/add_items, corpo
+  // {items:[{shop_id, item_id}]}, resposta {"err_code":0,"err_msg":"sucesso","data":null}.
+  const ADD_RE = /^\/webapi\/v1\/session\/\d+\/add_items$/;
+  const ADD_MAX_ITEMS = 20;
+
+  function isAllowedAddPath(path) {
+    return typeof path === 'string' && ADD_RE.test(path);
+  }
+
+  const idOk = (n) => typeof n === 'number' && Number.isSafeInteger(n) && n > 0;
+
+  // O corpo só pode ter "items" (1 a 20), cada um só com shop_id e item_id inteiros positivos, sem repetir item_id.
+  function validateAddBody(body) {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
+    if (Object.keys(body).join() !== 'items') return false;
+    const items = body.items;
+    if (!Array.isArray(items) || items.length < 1 || items.length > ADD_MAX_ITEMS) return false;
+    const vistos = new Set();
+    for (const it of items) {
+      if (!it || typeof it !== 'object' || Array.isArray(it)) return false;
+      if (Object.keys(it).sort().join() !== 'item_id,shop_id') return false;
+      if (!idOk(it.item_id) || !idOk(it.shop_id)) return false;
+      if (vistos.has(it.item_id)) return false;
+      vistos.add(it.item_id);
+    }
+    return true;
+  }
+
+  function handleAddRequest(data, getXhr) {
+    if (!data || typeof data !== 'object' || data.source !== 'sla-ext' || data.type !== 'add') {
+      return Promise.resolve(reply(data && typeof data === 'object' ? data.id : undefined, { error: 'pedido invalido' }));
+    }
+    if (!isAllowedAddPath(data.path) || !validateAddBody(data.body)) {
+      return Promise.resolve(reply(data.id, { error: 'pedido recusado' }));
+    }
+    return xhrWrite('PUT', data, getXhr);
+  }
+
   bridge.isAllowedBridgePath = isAllowedBridgePath;
   bridge.isAllowedShowPath = isAllowedShowPath;
   bridge.validateShowBody = validateShowBody;
   bridge.handleShowRequest = handleShowRequest;
+  bridge.isAllowedAddPath = isAllowedAddPath;
+  bridge.validateAddBody = validateAddBody;
+  bridge.handleAddRequest = handleAddRequest;
   bridge.handleBridgeRequest = handleBridgeRequest;
 
   if (typeof module !== 'undefined' && module.exports) module.exports = bridge;
@@ -109,6 +158,10 @@
             } else if (d.type === 'show') {
               // XMLHttpRequest da página (o único cliente que a Shopee aceita), resolvido na hora.
               handleShowRequest(d, () => window.XMLHttpRequest)
+                .then((result) => window.postMessage(result, location.origin))
+                .catch(() => { /* nunca lança */ });
+            } else if (d.type === 'add') {
+              handleAddRequest(d, () => window.XMLHttpRequest)
                 .then((result) => window.postMessage(result, location.origin))
                 .catch(() => { /* nunca lança */ });
             }

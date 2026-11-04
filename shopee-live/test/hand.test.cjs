@@ -179,3 +179,13 @@ test('keepsTab: só continua na Shopee enquanto o lote está resolvendo', () => 
   assert.strictEqual(H.keepsTab({ phase: 'done' }), false);
   assert.strictEqual(H.keepsTab(null), false);
 });
+
+test('shopAndItemFromUrl: números de loja e produto, nos dois formatos; resto é null', () => {
+  assert.deepStrictEqual(H.shopAndItemFromUrl(P1), { shopId: 111, itemId: 222 });
+  assert.deepStrictEqual(H.shopAndItemFromUrl(P1B), { shopId: 111, itemId: 222 });
+  assert.deepStrictEqual(H.shopAndItemFromUrl('https://shopee.com.br/Nome-i.395166866.50268328916?sp=1'), null);
+  for (const u of ['', null, undefined, 'https://shopee.com.br/', 'https://shopee.com.br/search?keyword=x', 'lixo',
+    'https://shopee.com.br/affiliation-i.0.5', 'https://shopee.com.br/affiliation-i.99999999999999999999.5']) {
+    assert.strictEqual(H.shopAndItemFromUrl(u), null, String(u));
+  }
+});

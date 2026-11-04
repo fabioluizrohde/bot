@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { isAllowedBridgePath, handleBridgeRequest, isAllowedShowPath, validateShowBody, handleShowRequest } = require('../src/live/pageBridge.js');
+const { isAllowedBridgePath, handleBridgeRequest, isAllowedShowPath, validateShowBody, handleShowRequest, isAllowedAddPath, validateAddBody, handleAddRequest } = require('../src/live/pageBridge.js');
 
 const OK = '/webapi/v1/session/7898272/host/items';
 
@@ -181,4 +181,80 @@ test('handleShowRequest: erro de rede e exceção viram ok:false status 0', asyn
   assert.strictEqual(r2.ok, false);
   assert.strictEqual(r2.status, 0);
   assert.strictEqual(r2.error, 'sem xhr');
+});
+
+// ---- Adicionar à sacola (PUT add_items) ----
+const ADD = '/webapi/v1/session/7907717/add_items';
+const CORPO = { items: [{ shop_id: 395166866, item_id: 50268328916 }] };
+const pedidoAdd = (extra) => ({ source: 'sla-ext', type: 'add', id: 'a1', path: ADD, body: CORPO, ...extra });
+
+test('isAllowedAddPath: aceita só /session/<n>/add_items', () => {
+  assert.strictEqual(isAllowedAddPath(ADD), true);
+  for (const r of ['/webapi/v1/session/1/add_items?x=1', '/webapi/v1/session/1/show', '//evil.com/x', 'https://x/y',
+    '/webapi/v1/session/1/add_items/', '/webapi/v1/session/abc/add_items', '/webapi/v1/session/1/add_items/../x', '', null, undefined, 42, {}]) {
+    assert.strictEqual(isAllowedAddPath(r), false, String(r));
+  }
+});
+
+test('validateAddBody: só items com shop_id e item_id inteiros, até 20, sem repetir', () => {
+  assert.strictEqual(validateAddBody(CORPO), true);
+  const vinte = { items: Array.from({ length: 20 }, (_, i) => ({ shop_id: 1, item_id: 100 + i })) };
+  assert.strictEqual(validateAddBody(vinte), true);
+  const vinteUm = { items: Array.from({ length: 21 }, (_, i) => ({ shop_id: 1, item_id: 100 + i })) };
+  const ruins = [null, undefined, 'x', [], {}, { items: [] }, { items: 'x' }, vinteUm,
+    { items: [{ shop_id: 1, item_id: 2 }], extra: 1 },
+    { items: [{ shop_id: 1, item_id: 2, name: 'x' }] },
+    { items: [{ shop_id: 1 }] }, { items: [{ item_id: 1 }] },
+    { items: [{ shop_id: '1', item_id: 2 }] }, { items: [{ shop_id: 1, item_id: NaN }] },
+    { items: [{ shop_id: 1.5, item_id: 2 }] }, { items: [{ shop_id: 0, item_id: 2 }] },
+    { items: [{ shop_id: -1, item_id: 2 }] }, { items: [{ shop_id: 1, item_id: 2 }, { shop_id: 1, item_id: 2 }] },
+    { items: [null] }, { items: [[1, 2]] }];
+  for (const b of ruins) assert.strictEqual(validateAddBody(b), false, JSON.stringify(b));
+});
+
+test('handleAddRequest: corpo válido faz o PUT exato e resolve ok', async () => {
+  FakeXhr.modo = { status: 200, text: '{"err_code":0}' };
+  let n = 0;
+  const r = await handleAddRequest(pedidoAdd(), () => { n++; return FakeXhr; });
+  const x = FakeXhr.last;
+  assert.strictEqual(n, 1);
+  assert.deepStrictEqual(x.calls, [['open', 'PUT', ADD, true]]);
+  assert.deepStrictEqual(x.headers, [['Content-Type', 'application/json;charset=UTF-8']]);
+  assert.strictEqual(x.withCredentials, true);
+  assert.strictEqual(x.timeout, 15000);
+  assert.strictEqual(x.sent, JSON.stringify(CORPO));
+  assert.deepStrictEqual(r, { source: 'sla-bridge', id: 'a1', ok: true, status: 200, text: '{"err_code":0}' });
+});
+
+test('handleAddRequest: caminho ou corpo recusado nunca chama getXhr', async () => {
+  let n = 0;
+  const get = () => { n++; return FakeXhr; };
+  for (const d of [pedidoAdd({ path: SHOW }), pedidoAdd({ path: 'https://evil.com/x' }), pedidoAdd({ body: {} }),
+    pedidoAdd({ body: { items: [{ shop_id: 1, item_id: 2, x: 1 }] } }), pedidoAdd({ body: null })]) {
+    const r = await handleAddRequest(d, get);
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.status, 0);
+    assert.strictEqual(r.error, 'pedido recusado');
+    assert.strictEqual(r.id, 'a1');
+  }
+  assert.strictEqual(n, 0);
+});
+
+test('handleAddRequest: pedido malformado e tipo errado', async () => {
+  let n = 0;
+  const get = () => { n++; return FakeXhr; };
+  for (const d of [null, undefined, 'x', {}, pedidoAdd({ source: 'outro' }), pedidoAdd({ type: 'show' })]) {
+    const r = await handleAddRequest(d, get);
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.error, 'pedido invalido');
+  }
+  assert.strictEqual(n, 0);
+});
+
+test('handleAddRequest: erro de rede vira ok:false status 0', async () => {
+  FakeXhr.modo = { erro: true };
+  const r = await handleAddRequest(pedidoAdd(), () => FakeXhr);
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.status, 0);
+  assert.strictEqual(r.error, 'erro de rede');
 });

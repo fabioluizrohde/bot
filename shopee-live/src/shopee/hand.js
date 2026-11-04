@@ -57,6 +57,15 @@
     return m ? m[1] + '.' + m[2] : null;
   }
 
+  // Números da loja e do produto pela URL (inteiros seguros e positivos); null se não for produto.
+  function shopAndItemFromUrl(url) {
+    const k = productIdFromUrl(url);
+    if (!k) return null;
+    const [shopId, itemId] = k.split('.').map(Number);
+    const ok = (n) => Number.isSafeInteger(n) && n > 0;
+    return ok(shopId) && ok(itemId) ? { shopId, itemId } : null;
+  }
+
   // A busca terminou num produto NOVO? Só se a URL atual for de produto e de outro produto que
   // não o da página onde a busca começou (a busca pode ser feita na página do produto anterior).
   function shouldFinish({ startUrl, currentUrl }) {
@@ -203,6 +212,11 @@
     guardarUltimo(id, status);
     const msg = { type: 'hand:result', id, status };
     if (name) msg.name = name;
+    // Produto resolvido: leva também os números da loja e do produto (vêm da URL da página), para a adição na sacola.
+    if (status === 'favoritado' || status === 'ja_favoritado') {
+      const k = shopAndItemFromUrl(location.href);
+      if (k) { msg.shopId = k.shopId; msg.itemId = k.itemId; }
+    }
     const nb = await send(msg);
     if (keepsTab(nb)) refresh().catch(() => {});
     return nb;
@@ -365,6 +379,7 @@
     isFavorited,
     cleanProductName,
     productIdFromUrl,
+    shopAndItemFromUrl,
     shouldFinish,
     decideAfterWait,
     nameFromTitles,

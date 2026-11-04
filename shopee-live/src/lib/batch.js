@@ -42,6 +42,21 @@
     return b.items.filter((i) => MARCAVEIS.includes(i.status));
   }
 
+  // O que pode ir para a sacola: resolvidos com loja e produto inteiros positivos, sem repetir o produto.
+  // Devolve [{id (o ID de texto do lote), shopId, itemId}].
+  function addableItems(b) {
+    if (!b || !Array.isArray(b.items)) return [];
+    const ok = (n) => typeof n === 'number' && Number.isSafeInteger(n) && n > 0;
+    const vistos = new Set();
+    const out = [];
+    for (const i of resolvedItems(b)) {
+      if (!ok(i.shopId) || !ok(i.itemId) || vistos.has(i.itemId)) continue;
+      vistos.add(i.itemId);
+      out.push({ id: i.id, shopId: i.shopId, itemId: i.itemId });
+    }
+    return out;
+  }
+
   function advancePhase(b) {
     if (b.phase === 'resolving') {
       if (nextPending(b)) return { ...b };
@@ -57,5 +72,5 @@
     return { total: b.items.length, porStatus };
   }
 
-  SLA.batch = { STATUS, createBatch, nextPending, setItem, resolvedItems, advancePhase, summarize };
+  SLA.batch = { STATUS, createBatch, nextPending, setItem, resolvedItems, addableItems, advancePhase, summarize };
 })(typeof window !== 'undefined' ? window : globalThis);

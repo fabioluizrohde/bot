@@ -162,3 +162,36 @@ test('batch:setStatus do último favoritado para adicionado leva o lote a done e
   assert.strictEqual((await c.handle({ type: 'batch:get' })).phase, 'done');
   assert.ok(calls.send.some(([id, m]) => id === 10 && m.type === 'batch:update' && m.batch.phase === 'done'));
 });
+
+test('batch:start guarda a sessão da live (só números) no lote', async () => {
+  const f = fakeDeps();
+  const c = createCoordinator(f.deps);
+  const b = await c.handle({ type: 'batch:start', ids: ['AAA'], openIn: 'tab', sessionId: '7907717' }, LIVE);
+  assert.strictEqual(b.sessionId, '7907717');
+  await c.handle({ type: 'batch:clear' });
+  const b2 = await c.handle({ type: 'batch:start', ids: ['AAA'], openIn: 'tab', sessionId: '../x' }, LIVE);
+  assert.strictEqual(b2.sessionId, null);
+});
+
+test('hand:result guarda loja e produto só se forem inteiros positivos', async () => {
+  const { c } = await started('tab', ['AAA', 'BBB', 'CCC']);
+  await c.handle({ type: 'hand:result', id: 'AAA', status: 'favoritado', shopId: 395166866, itemId: 50268328916 });
+  await c.handle({ type: 'hand:result', id: 'BBB', status: 'favoritado', shopId: '1', itemId: -5 });
+  const b = await c.handle({ type: 'batch:get' });
+  assert.strictEqual(b.items[0].shopId, 395166866);
+  assert.strictEqual(b.items[0].itemId, 50268328916);
+  assert.strictEqual('shopId' in b.items[1], false);
+  assert.strictEqual('itemId' in b.items[1], false);
+});
+
+test('batch:markAdd marca "já tentei adicionar" uma única vez e guarda o instante', async () => {
+  const { c } = await started('tab', ['AAA']);
+  const r1 = await c.handle({ type: 'batch:markAdd' });
+  assert.strictEqual(r1.ok, true);
+  assert.strictEqual(r1.batch.addTried, true);
+  const r2 = await c.handle({ type: 'batch:markAdd' });
+  assert.strictEqual(r2.ok, false); // segunda vez: recusa (nunca repete sozinho)
+  assert.strictEqual((await c.handle({ type: 'batch:get' })).addTried, true);
+  const vazio = await createCoordinator(fakeDeps().deps).handle({ type: 'batch:markAdd' });
+  assert.strictEqual(vazio.ok, false);
+});

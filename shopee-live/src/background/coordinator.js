@@ -65,6 +65,8 @@
         case 'batch:start': {
           if (b && b.phase !== 'done') return { error: 'lote em andamento' };
           const novo = B().createBatch(msg.ids, { openIn: msg.openIn });
+          // Sessão da live onde o lote nasceu: a adição automática só vale nela (só dígitos).
+          novo.sessionId = typeof msg.sessionId === 'string' && /^\d+$/.test(msg.sessionId) ? msg.sessionId : null;
           if (sender && sender.tab) {
             await storage.set('liveTabId', sender.tab.id);
             await storage.set('liveWindowId', sender.tab.windowId != null ? sender.tab.windowId : null);
@@ -83,6 +85,8 @@
           if (msg.status === 'captcha') return saveBatch({ ...b, paused: true });
           const patch = { status: msg.status };
           if (msg.name) patch.name = msg.name;
+          const pos = (n) => typeof n === 'number' && Number.isSafeInteger(n) && n > 0;
+          if (pos(msg.shopId) && pos(msg.itemId)) { patch.shopId = msg.shopId; patch.itemId = msg.itemId; }
           let nb = B().setItem(b, msg.id, patch);
           nb = { ...B().advancePhase({ ...nb, paused: false }) };
           await saveBatch(nb);
@@ -97,6 +101,13 @@
         case 'batch:setStatus': {
           if (!b) return null;
           return saveBatch(B().advancePhase(B().setItem(b, msg.id, { status: msg.status })));
+        }
+        case 'batch:markAdd': {
+          // Marca "a adição automática já foi tentada neste lote". Só a primeira chamada passa: o envio
+          // automático nunca se repete (nem recarregando a página); repetir é decisão do Fabio, no botão.
+          if (!b || b.addTried) return { ok: false, batch: b || null };
+          const nb = await saveBatch({ ...b, addTried: true, addTriedAt: Date.now() });
+          return { ok: true, batch: nb };
         }
         case 'batch:clear': {
           await storage.set('batch', null);

@@ -92,3 +92,18 @@ test('summarize conta por status', () => {
   b = B.setItem(b, ids[1], { status: 'nao_achei' });
   assert.deepStrictEqual(B.summarize(b), { total: 3, porStatus: { nao_achei: 2, na_fila: 1 } });
 });
+
+test('addableItems: só resolvidos com loja e produto válidos, sem repetir, com o ID de texto', () => {
+  const S = B.STATUS;
+  let b = B.createBatch(['A', 'B', 'C', 'D', 'E']);
+  b = B.setItem(b, 'A', { status: S.FAVORITADO, shopId: 1, itemId: 10 });
+  b = B.setItem(b, 'B', { status: S.JA_FAVORITADO, shopId: 2, itemId: 20 });
+  b = B.setItem(b, 'C', { status: S.FAVORITADO }); // sem números: fica de fora
+  b = B.setItem(b, 'D', { status: S.NAO_ACHEI, shopId: 4, itemId: 40 }); // não resolvido: fora
+  b = B.setItem(b, 'E', { status: S.FAVORITADO, shopId: 5, itemId: 10 }); // item repetido: fora
+  assert.deepStrictEqual(B.addableItems(b), [
+    { id: 'A', shopId: 1, itemId: 10 },
+    { id: 'B', shopId: 2, itemId: 20 },
+  ]);
+  assert.deepStrictEqual(B.addableItems(null), []);
+});

@@ -501,3 +501,54 @@ test('SHOW_TIMEOUT_MS: 20 s, maior que os 15 s do pedido na página (pageBridge.
   const xhr = Number((ponte.match(/\.timeout\s*=\s*(\d+)/) || [])[1]);
   assert.ok(xhr > 0 && bag.SHOW_TIMEOUT_MS > xhr, `xhr=${xhr}`);
 });
+
+// ---------- addItems (adicionar à sacola pela ponte) ----------
+
+test('addItems: posta type add com path e corpo exatos; sucesso vira {ok:true}', async () => {
+  const w = fakeWin();
+  const p = bag.addItems(SID, [{ shopId: 22, itemId: 11 }, { shopId: 24, itemId: 13 }], w);
+  assert.strictEqual(w.posted.length, 1);
+  const { msg, origin } = w.posted[0];
+  assert.strictEqual(origin, 'https://live.shopee.com.br');
+  assert.strictEqual(msg.source, 'sla-ext');
+  assert.strictEqual(msg.type, 'add');
+  assert.strictEqual(msg.path, `/webapi/v1/session/${SID}/add_items`);
+  assert.deepStrictEqual(msg.body, { items: [{ shop_id: 22, item_id: 11 }, { shop_id: 24, item_id: 13 }] });
+  w.answer({ source: 'sla-bridge', id: msg.id, ok: true, status: 200, text: '{"err_code":0,"err_msg":"sucesso","data":null}' });
+  assert.deepStrictEqual(await p, { ok: true });
+  assert.strictEqual(w.listeners.length, 0);
+});
+
+test('addItems: entradas inválidas são recusadas sem postar nada', async () => {
+  const w = fakeWin();
+  const ruins = [null, [], 'x', [{ shopId: 1 }], [{ itemId: 1 }], [{ shopId: '1', itemId: 2 }], [{ shopId: 1, itemId: 0 }],
+    [{ shopId: 1, itemId: 2 }, { shopId: 1, itemId: 2 }], Array.from({ length: 21 }, (_, i) => ({ shopId: 1, itemId: i + 1 }))];
+  for (const e of ruins) assert.deepStrictEqual(await bag.addItems(SID, e, w), { ok: false, reason: 'recusado' });
+  assert.deepStrictEqual(await bag.addItems('abc', [{ shopId: 1, itemId: 2 }], w), { ok: false, reason: 'recusado' });
+  assert.strictEqual(w.posted.length, 0);
+});
+
+test('addItems: err_code diferente de 0, http e recusa da ponte', async () => {
+  let w = fakeWin();
+  let p = bag.addItems(SID, [{ shopId: 1, itemId: 2 }], w);
+  w.answer({ source: 'sla-bridge', id: w.posted[0].msg.id, ok: true, status: 200, text: '{"err_code":5}' });
+  assert.deepStrictEqual(await p, { ok: false, reason: 'http', detail: 'err_code 5' });
+
+  w = fakeWin();
+  p = bag.addItems(SID, [{ shopId: 1, itemId: 2 }], w);
+  w.answer({ source: 'sla-bridge', id: w.posted[0].msg.id, ok: false, status: 403, text: 'no' });
+  assert.deepStrictEqual(await p, { ok: false, reason: 'http', detail: '403' });
+
+  w = fakeWin();
+  p = bag.addItems(SID, [{ shopId: 1, itemId: 2 }], w);
+  w.answer({ source: 'sla-bridge', id: w.posted[0].msg.id, ok: false, status: 0, text: '', error: 'pedido recusado' });
+  assert.deepStrictEqual(await p, { ok: false, reason: 'recusado' });
+});
+
+test('addItems: sem resposta no prazo vira rede (e remove o ouvinte)', async () => {
+  const w = fakeWin();
+  const r = await bag.addItems(SID, [{ shopId: 1, itemId: 2 }], w, { timeoutMs: 20 });
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.reason, 'rede');
+  assert.strictEqual(w.listeners.length, 0);
+});
