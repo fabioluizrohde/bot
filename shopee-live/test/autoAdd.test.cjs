@@ -48,9 +48,10 @@ test('planItems: nada novo e sacola cheia não enviam nada', () => {
   const cand = B.addableItems(lote());
   assert.strictEqual(A.planItems(cand, sacola([10, 20, 30])).reason, 'nada');
   assert.deepStrictEqual(A.planItems(cand, sacola([10, 20, 30])).toAdd, []);
-  const justo = A.planItems(cand, sacola([1, 2, 3], { maxItems: 5, total: 3 })); // 3 + 3 > 5
-  assert.strictEqual(justo.reason, 'sacola_cheia');
-  assert.deepStrictEqual(justo.toAdd, []);
+  const cheia = A.planItems(cand, sacola([1, 2, 3], { maxItems: 3, total: 3 })); // 0 vagas
+  assert.strictEqual(cheia.reason, 'sacola_cheia');
+  assert.deepStrictEqual(cheia.toAdd, []);
+  assert.deepStrictEqual(cheia.sobraram.map((x) => x.id), ['A', 'B', 'C']);
   assert.strictEqual(A.planItems(cand, sacola([1, 2], { maxItems: 5, total: 2 })).toAdd.length, 3); // cabe (5)
   assert.strictEqual(A.planItems(cand, sacola([1], { maxItems: 0, total: 1 })).toAdd.length, 3); // sem limite conhecido
 });
@@ -176,7 +177,7 @@ test('run: tudo já na sacola vira ja_na_sacola sem enviar', async () => {
 
 test('run: sacola cheia não envia e avisa', async () => {
   const d = deps();
-  d.bags = [sacola([1, 2, 3], { maxItems: 4, total: 3 })];
+  d.bags = [sacola([1, 2, 3, 4], { maxItems: 4, total: 4 })];
   const r = await R(lote(), d);
   assert.strictEqual(d.calls.add.length, 0);
   assert.match(r.aviso, /cheia|limite/i);
@@ -227,4 +228,43 @@ test('run: erro definitivo (http) não fica esperando a sacola', async () => {
   d.bags = [sacola([]), sacola([])];
   await R(lote(), d);
   assert.strictEqual(esperas.length, 0);
+});
+
+// ---- sacola com menos vagas que o lote: adiciona só o que cabe e avisa o apresentador ----
+test('planItems: poucas vagas adiciona só o que cabe (na ordem do lote) e separa as que sobraram', () => {
+  const cand = B.addableItems(lote());
+  const p = A.planItems(cand, sacola([1, 2, 3], { maxItems: 5, total: 3 })); // 2 vagas para 3 produtos
+  assert.strictEqual(p.reason, undefined);
+  assert.deepStrictEqual(p.toAdd.map((x) => x.id), ['A', 'B']);
+  assert.deepStrictEqual(p.sobraram.map((x) => x.id), ['C']);
+  // Cabe tudo: nada sobra.
+  assert.deepStrictEqual(A.planItems(cand, sacola([1, 2], { maxItems: 5, total: 2 })).sobraram, []);
+});
+
+test('run: poucas vagas envia só o que cabe, deixa o resto no lote e AVISA o apresentador', async () => {
+  const d = deps();
+  d.bags = [sacola([1, 2, 3], { maxItems: 5, total: 3 }), sacola([1, 2, 3, 10, 20], { maxItems: 5, total: 5 })];
+  const circuit = { erros: 0 };
+  const r = await R(lote(), d, { circuit });
+  assert.deepStrictEqual(d.calls.add, [{ sid: '777', entries: [{ shopId: 1, itemId: 10 }, { shopId: 2, itemId: 20 }] }]);
+  assert.deepStrictEqual(r.updates, [{ id: 'A', status: 'adicionado' }, { id: 'B', status: 'adicionado' }]); // C continua no lote
+  assert.strictEqual(circuit.erros, 0); // não é erro
+  assert.match(r.aviso, /Atenção/);
+  assert.match(r.aviso, /2 vagas/);
+  assert.match(r.aviso, /1 (produto )?ficou/);
+  assert.match(r.aviso, /Adicionar à sacola/);
+});
+
+test('run: sacola sem nenhuma vaga não envia, deixa tudo no lote e AVISA o apresentador', async () => {
+  const d = deps();
+  d.bags = [sacola([1, 2, 3, 4], { maxItems: 4, total: 4 })];
+  const circuit = { erros: 0 };
+  const r = await R(lote(), d, { circuit });
+  assert.strictEqual(d.calls.add.length, 0);
+  assert.deepStrictEqual(r.updates, []);
+  assert.strictEqual(circuit.erros, 0);
+  assert.match(r.aviso, /Atenção/);
+  assert.match(r.aviso, /cheia/i);
+  assert.match(r.aviso, /3 produtos/);
+  assert.match(r.aviso, /Adicionar à sacola/);
 });

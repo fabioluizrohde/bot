@@ -98,14 +98,16 @@
     const foto = c.image && !comErro.has(c.image)
       ? `<img src="${esc(SLA.bag.imageUrl(c.image))}" alt="" crossorigin="anonymous" data-img="${esc(c.image)}">`
       : '';
-    const off = semEstoque || m.trocando || m.desligado ? ' disabled' : '';
+    // Esgotado/removido NÃO usa disabled (ele bloquearia o clique no ✕ de remover): usa aria-disabled, e o Mostrar já ignora.
+    const off = m.trocando || m.desligado ? ' disabled' : (semEstoque ? ' aria-disabled="true"' : '');
     const item = c.itemId == null ? '' : esc(c.itemId);
     const noAr = cls.includes('noar');
     // Etiqueta embaixo da foto: no produto "No ar" mostra "No ar"; ao passar o mouse (e nos outros produtos,
     // só no hover) vira "Mover p/ cima" (clicável). Sem o botão enquanto há pedido em andamento ou produto esgotado.
     const podeMover = !semEstoque && !m.fixando && !m.trocando && !m.desligado && !m.pinDesligado;
     // ✕ de remover (canto superior direito): nunca no produto No ar; pede confirmação no próprio card.
-    const podeRemover = podeMover && !noAr && !m.rmDesligado;
+    const livre = !m.fixando && !m.trocando && !m.desligado && !m.pinDesligado;
+    const podeRemover = livre && !noAr && !m.rmDesligado; // esgotado e removido também podem sair da sacola
     const confirmando = podeRemover && m.confirmando != null && String(m.confirmando) === String(c.itemId);
     const botaoRm = podeRemover
       ? (confirmando
@@ -283,7 +285,7 @@
       if (!guardaRm) return;
       const valor = el && el.dataset ? el.dataset.item : undefined;
       const card = cardByItemId(state.itens, valor);
-      if (!card || card.outOfStock || card.removed) return;
+      if (!card) return;
       if (state.noAr != null && String(card.itemId) === String(state.noAr)) return; // nunca o que está no ar
       if (state.confirmando == null || String(state.confirmando) !== String(card.itemId)) {
         limparConfirmacao();

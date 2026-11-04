@@ -8,7 +8,9 @@
 //  - lê a sacola antes: tira o que já está nela e não passa do limite;
 //  - erro/tempo esgotado: nunca repete sozinho; relê a sacola e só confirma o que apareceu;
 //  - 2 erros seguidos desligam o automático até recarregar a página (o botão manual continua);
-//  - pedidos de no máximo 20 produtos, parando no primeiro erro.
+//  - pedidos de no máximo 20 produtos, parando no primeiro erro;
+//  - sacola com menos vagas que o lote: envia só o que cabe (na ordem do lote), o resto fica no lote
+//    e o apresentador é avisado (o botão "Adicionar à sacola" tenta o resto quando abrir espaço).
 (function (root) {
   const SLA = (root.SLA = root.SLA || {});
 
@@ -29,17 +31,20 @@
   }
 
   // candidatos: [{id, shopId, itemId}]; bag: {items:[{itemId}], total, maxItems}.
-  // Devolve {already, toAdd} e, quando não há o que enviar, reason: 'nada' | 'sacola_cheia'.
+  // Devolve {already, toAdd, sobraram}: toAdd é o que cabe (na ordem do lote) e sobraram o que não coube
+  // por falta de vaga. Quando não há o que enviar, reason: 'nada' | 'sacola_cheia' (sem nenhuma vaga).
   function planItems(candidatos, bag) {
     const naSacola = new Set((bag.items || []).map((c) => c.itemId));
     const already = candidatos.filter((c) => naSacola.has(c.itemId));
     const toAdd = candidatos.filter((c) => !naSacola.has(c.itemId));
-    if (!toAdd.length) return { already, toAdd, reason: 'nada' };
+    if (!toAdd.length) return { already, toAdd, sobraram: [], reason: 'nada' };
     const total = Math.max(Number(bag.total) || 0, (bag.items || []).length);
-    if (Number(bag.maxItems) > 0 && total + toAdd.length > Number(bag.maxItems)) {
-      return { already, toAdd: [], reason: 'sacola_cheia' };
+    if (Number(bag.maxItems) > 0) {
+      const vagas = Math.max(0, Number(bag.maxItems) - total);
+      if (vagas === 0) return { already, toAdd: [], sobraram: toAdd, reason: 'sacola_cheia' };
+      if (toAdd.length > vagas) return { already, toAdd: toAdd.slice(0, vagas), sobraram: toAdd.slice(vagas) };
     }
-    return { already, toAdd };
+    return { already, toAdd, sobraram: [] };
   }
 
   function chunks(lista) {
@@ -80,7 +85,10 @@
       const plano = planItems(candidatos, antes);
       const updates = plano.already.map((c) => ({ id: c.id, status: 'ja_na_sacola' }));
       if (plano.reason === 'sacola_cheia') {
-        return { updates, aviso: `A sacola não comporta mais ${plural(plano.toAdd.length || candidatos.length - plano.already.length, 'produto', 'produtos')} (limite ${antes.maxItems}). Nada foi enviado.` };
+        return {
+          updates,
+          aviso: `Atenção: a sacola está cheia (limite ${antes.maxItems}) e não coube nenhum dos ${plural(plano.sobraram.length, 'produto', 'produtos')} do lote. Nada foi enviado. Remova produtos da sacola (por exemplo os esgotados) e clique em "Adicionar à sacola".`,
+        };
       }
       if (plano.reason === 'nada') {
         return { updates, aviso: `${plural(plano.already.length, 'produto já estava', 'produtos já estavam')} na sacola.` };
@@ -114,14 +122,18 @@
       const completo = !falhou && !!(depois && depois.ok) && adicionados === plano.toAdd.length;
       if (completo) circuit.erros = 0; else circuit.erros++;
 
+      // Aviso extra ao apresentador: o que não coube por falta de vaga continua no lote.
+      const faltaVaga = plano.sobraram.length
+        ? ` Atenção: a sacola só tinha ${plural(plano.toAdd.length, 'vaga', 'vagas')}; ${plural(plano.sobraram.length, 'produto ficou', 'produtos ficaram')} no lote. Remova produtos da sacola (por exemplo os esgotados) e clique em "Adicionar à sacola".`
+        : '';
       const ja = plano.already.length ? ` (${plural(plano.already.length, 'já estava', 'já estavam')} na sacola)` : '';
-      if (completo) return { updates, aviso: `${plural(adicionados, 'adicionado', 'adicionados')} à sacola${ja}.` };
+      if (completo) return { updates, aviso: `${plural(adicionados, 'adicionado', 'adicionados')} à sacola${ja}.${faltaVaga}` };
       if (!(depois && depois.ok)) {
         return { updates, aviso: 'Enviei os produtos, mas não consegui conferir a sacola. Olhe a sacola antes de tentar de novo.' };
       }
       return {
         updates,
-        aviso: `${adicionados} de ${plano.toAdd.length} adicionados${ja}. Os outros não apareceram na sacola. Confira e use "Adicionar à sacola" para tentar de novo.`,
+        aviso: `${adicionados} de ${plano.toAdd.length} adicionados${ja}. Os outros não apareceram na sacola. Confira e use "Adicionar à sacola" para tentar de novo.${faltaVaga}`,
       };
     } catch (e) {
       if (circuit) circuit.erros++;
