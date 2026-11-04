@@ -399,7 +399,7 @@ test('readBag com a ponte: 200 devolve a sacola', async () => {
 
 const cardShow = () => ({ n: 3, itemId: 11, shopId: 22, raw: { item_id: 11, shop_id: 22, id: 3, name: 'X' } });
 
-test('showItem: posta type show com path certo e body === card.raw; sucesso vira {ok:true}', async () => {
+test('showItem: posta type show com path certo e body {item: JSON do card.raw}; sucesso vira {ok:true}', async () => {
   const w = fakeWin();
   const c = cardShow();
   const p = bag.showItem(SID, c, w);
@@ -409,7 +409,7 @@ test('showItem: posta type show com path certo e body === card.raw; sucesso vira
   assert.strictEqual(msg.source, 'sla-ext');
   assert.strictEqual(msg.type, 'show');
   assert.strictEqual(msg.path, `/webapi/v1/session/${SID}/show`);
-  assert.strictEqual(msg.body, c.raw);
+  assert.deepStrictEqual(msg.body, { item: JSON.stringify(c.raw) });
   w.answer({ source: 'sla-bridge', id: msg.id, ok: true, status: 200, text: '{"err_code":0,"err_msg":"sucesso","data":{"item_id":11,"shop_id":22}}' });
   assert.deepStrictEqual(await p, { ok: true });
   assert.strictEqual(w.listeners.length, 0);

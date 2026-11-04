@@ -78,10 +78,12 @@ test('handleBridgeRequest: status não-ok passa direto', async () => {
   assert.strictEqual(r.text, 'no');
 });
 
-// ---------- pedido "show" (PUT restrito) ----------
+// ---------- pedido "show" (POST restrito) ----------
 
 const SHOW = '/webapi/v1/session/7898272/show';
 const ITEM = { item_id: 123, shop_id: 456, label: 'Camiseta', name: 'x' };
+// Formato real da Shopee (conferido em 2026-11-04): {"item": "<produto convertido em texto>"}
+const SHOWBODY = { item: JSON.stringify(ITEM) };
 
 class FakeXhr {
   constructor() {
@@ -103,7 +105,7 @@ class FakeXhr {
     });
   }
 }
-const pedidoShow = (extra) => ({ source: 'sla-ext', type: 'show', id: 's1', path: SHOW, body: ITEM, ...extra });
+const pedidoShow = (extra) => ({ source: 'sla-ext', type: 'show', id: 's1', path: SHOW, body: SHOWBODY, ...extra });
 
 test('isAllowedShowPath: aceita só /session/<n>/show', () => {
   assert.strictEqual(isAllowedShowPath(SHOW), true);
@@ -113,27 +115,29 @@ test('isAllowedShowPath: aceita só /session/<n>/show', () => {
   }
 });
 
-test('validateShowBody: aceita o item real e recusa o resto', () => {
-  assert.strictEqual(validateShowBody(ITEM), true);
-  const circ = { item_id: 1, shop_id: 2 }; circ.self = circ;
-  const grande = { item_id: 1, shop_id: 2, x: 'a'.repeat(20001) };
-  for (const b of [{}, [], null, undefined, 'x', { item_id: 'abc', shop_id: 1 }, { item_id: 1 },
-    { item_id: 1, shop_id: NaN }, grande, circ]) {
-    assert.strictEqual(validateShowBody(b), false, JSON.stringify(b && b.item_id));
-  }
+test('validateShowBody: aceita {item: "<json do produto>"} e recusa o resto', () => {
+  assert.strictEqual(validateShowBody(SHOWBODY), true);
+  const grande = { item: JSON.stringify({ item_id: 1, shop_id: 2, x: 'a'.repeat(20001) }) };
+  const ruins = [{}, [], null, undefined, 'x', ITEM, // produto solto (formato antigo, errado)
+    { item: ITEM }, // objeto no lugar de texto
+    { item: 'isto não é json' }, { item: '[]' }, { item: 'null' }, { item: '"x"' }, { item: '' },
+    { item: JSON.stringify({ item_id: 'abc', shop_id: 1 }) }, { item: JSON.stringify({ item_id: 1 }) },
+    { item: JSON.stringify({ item_id: 1, shop_id: NaN }) }, { item: JSON.stringify({ item_id: 1, shop_id: 2 }), extra: 1 },
+    grande];
+  for (const b of ruins) assert.strictEqual(validateShowBody(b), false, String(JSON.stringify(b)).slice(0, 60));
 });
 
-test('handleShowRequest: corpo válido faz o PUT exato e resolve ok', async () => {
+test('handleShowRequest: corpo válido faz o POST exato e resolve ok', async () => {
   FakeXhr.modo = { status: 200, text: '{"ok":1}' };
   let n = 0;
   const r = await handleShowRequest(pedidoShow(), () => { n++; return FakeXhr; });
   const x = FakeXhr.last;
   assert.strictEqual(n, 1);
-  assert.deepStrictEqual(x.calls, [['open', 'PUT', SHOW, true]]);
+  assert.deepStrictEqual(x.calls, [['open', 'POST', SHOW, true]]);
   assert.deepStrictEqual(x.headers, [['Content-Type', 'application/json;charset=UTF-8']]);
   assert.strictEqual(x.withCredentials, true);
   assert.strictEqual(x.timeout, 15000);
-  assert.strictEqual(x.sent, JSON.stringify(ITEM));
+  assert.strictEqual(x.sent, JSON.stringify(SHOWBODY));
   assert.deepStrictEqual(r, { source: 'sla-bridge', id: 's1', ok: true, status: 200, text: '{"ok":1}' });
 });
 

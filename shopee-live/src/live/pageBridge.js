@@ -3,7 +3,7 @@
 // Esta ponte faz só TRÊS tipos de pedido, todos restritos:
 //  - leitura (GET, fetch da página): a lista da sacola;
 //  - escrita (PUT, XMLHttpRequest da página): "Mostrar" um item, em /session/<n>/show, com o
-//    corpo validado (o item exatamente como veio da lista da sacola);
+//    corpo validado ({item: "<o item da lista da sacola, convertido em texto JSON>"});
 //  - escrita (PUT, XMLHttpRequest da página): adicionar à sacola, em /session/<n>/add_items, só com
 //    {items:[{shop_id,item_id}]} (até 20, inteiros positivos).
 // Não copia nem inventa cabeçalhos de segurança (só Content-Type). Não depende de nenhum outro
@@ -44,15 +44,21 @@
     return typeof path === 'string' && SHOW_RE.test(path);
   }
 
+  // Formato real do Mostrar (conferido na live em 2026-11-04): {"item": "<produto convertido em texto JSON>"}.
+  // O texto precisa ser o JSON de um objeto com item_id e shop_id numéricos, até 20000 caracteres, e nada mais no corpo.
   function validateShowBody(body) {
     if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
-    if (!Number.isFinite(body.item_id) || !Number.isFinite(body.shop_id)) return false;
+    if (Object.keys(body).join() !== 'item') return false;
+    const t = body.item;
+    if (typeof t !== 'string' || t.length === 0 || t.length > SHOW_MAX) return false;
+    let it;
     try {
-      const s = JSON.stringify(body);
-      return typeof s === 'string' && s.length <= SHOW_MAX;
+      it = JSON.parse(t);
     } catch (e) {
       return false;
     }
+    if (!it || typeof it !== 'object' || Array.isArray(it)) return false;
+    return Number.isFinite(it.item_id) && Number.isFinite(it.shop_id);
   }
 
   // Pedido de escrita pela XMLHttpRequest da página, com método e corpo já validados por quem chama.
@@ -87,7 +93,7 @@
     if (!isAllowedShowPath(data.path) || !validateShowBody(data.body)) {
       return Promise.resolve(reply(data.id, { error: 'pedido recusado' }));
     }
-    return xhrWrite('PUT', data, getXhr); // PUT como o add_items (POST era só suposição e a Shopee devolvia data:{} sem efeito)
+    return xhrWrite('POST', data, getXhr); // PUT deu 404 na live real (2026-11-04): a rota do show é POST
   }
 
   // ---- Escrita restrita: adicionar à sacola (PUT add_items) ----

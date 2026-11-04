@@ -195,7 +195,7 @@
       const timeoutMs = (opts && opts.timeoutMs) || SHOW_TIMEOUT_MS;
       let d;
       try {
-        d = await bridgeRoundTrip(w, { type: 'show', path: `/webapi/v1/session/${sessionId}/show`, body: raw }, timeoutMs);
+        d = await bridgeRoundTrip(w, { type: 'show', path: `/webapi/v1/session/${sessionId}/show`, body: { item: JSON.stringify(raw) } }, timeoutMs);
       } catch (e) {
         return { ok: false, reason: 'rede', detail: String((e && e.message) || e) };
       }
