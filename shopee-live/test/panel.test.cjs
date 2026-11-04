@@ -18,6 +18,16 @@ test('mergeIds: não readiciona IDs que já estão no lote', () => {
   assert.deepStrictEqual(P.mergeIds([], 'CLH-NZK-QPT XXX-YYY-ZZZ', lote), ['XXX-YYY-ZZZ']);
 });
 
+test('shouldClearBatchOnSelect: só limpa lote terminado quando a seleção traz ID', () => {
+  const emAndamento = B.createBatch(['CLH-NZK-QPT']);
+  const terminado = { ...emAndamento, phase: 'done' };
+  assert.strictEqual(P.shouldClearBatchOnSelect(terminado, 'oi CLH-NZK-QPT'), true);
+  assert.strictEqual(P.shouldClearBatchOnSelect(terminado, 'bom dia sem código'), false);
+  assert.strictEqual(P.shouldClearBatchOnSelect(terminado, ''), false);
+  assert.strictEqual(P.shouldClearBatchOnSelect(emAndamento, 'XXX-YYY-ZZZ'), false);
+  assert.strictEqual(P.shouldClearBatchOnSelect(null, 'XXX-YYY-ZZZ'), false);
+});
+
 test('removeId', () => {
   assert.deepStrictEqual(P.removeId(['A', 'B'], 'A'), ['B']);
 });

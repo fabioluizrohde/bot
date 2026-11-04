@@ -49,6 +49,14 @@
     return filterOutBatch(found, batch);
   }
 
+  // O lote terminado (fase "done") se limpa sozinho quando o Fabio seleciona um texto com IDs novos.
+  // Lote em andamento nunca é limpo por seleção; seleção sem IDs não mexe em nada.
+  function shouldClearBatchOnSelect(batch, selectedText, extract) {
+    if (!batch || batch.phase !== 'done') return false;
+    const ext = extract || (SLA.ids && SLA.ids.extractIds);
+    return ext(selectedText).length > 0;
+  }
+
   function removeId(list, id) {
     return list.filter((x) => x !== id);
   }
@@ -479,7 +487,14 @@
   function onMouseUp() {
     const sel = typeof getSelection === 'function' ? getSelection() : null;
     if (!sel || sel.isCollapsed || !isInsideChat(sel.anchorNode, SLA.selectors.chatContent)) return;
-    const novo = mergeIds(state.ids, sel.toString(), state.batch);
+    const texto = sel.toString();
+    if (shouldClearBatchOnSelect(state.batch, texto)) {
+      // Lote terminado + IDs novos: limpa o quadro para esperar o novo lote.
+      Promise.resolve().then(() => send({ type: 'batch:clear' })).catch(() => {});
+      state.aviso = '';
+      setBatch(null); // para a vigia do Confirmar e zera os marcados
+    }
+    const novo = mergeIds(state.ids, texto, state.batch);
     if (novo.join() !== state.ids.join()) {
       state.ids = novo;
       draw();
@@ -611,7 +626,7 @@
     draw();
   }
 
-  SLA.panel = { registerArea, registerTab, redraw, isAreaVisible, isTabActive, findExtraAction, loteHtml, loteSummary, shouldExpandLote, nextLoteExpansion, scrollToRestore, refocus, shouldMount, isInsideChat, filterOutBatch, mergeIds, removeId, statusLabel, viewState, normalizeResults, planMarkResults, init };
+  SLA.panel = { registerArea, registerTab, redraw, isAreaVisible, isTabActive, findExtraAction, loteHtml, loteSummary, shouldExpandLote, nextLoteExpansion, scrollToRestore, refocus, shouldMount, isInsideChat, filterOutBatch, mergeIds, shouldClearBatchOnSelect, removeId, statusLabel, viewState, normalizeResults, planMarkResults, init };
   if (typeof module !== 'undefined' && module.exports) module.exports = SLA.panel;
 
   if (typeof document !== 'undefined' && typeof chrome !== 'undefined' && chrome.runtime) {
