@@ -85,6 +85,37 @@ test('normalizeBag devolve null para resposta inválida', () => {
   assert.strictEqual(bag.normalizeBag({ err_code: 0, data: {} }), null);
 });
 
+// Sacola vazia: a Shopee responde com sucesso e os campos de uma sacola, mas sem a lista de produtos
+// (ausente ou nula). Isso é "vazia", não "resposta inesperada" (visto na live real em 2026-11-04).
+test('normalizeBag: sacola vazia (items ausente ou nulo, com campos de sacola) vira lista vazia', () => {
+  for (const data of [
+    { total_count: 0, max_items: 30, has_more: false },
+    { items: null, total_count: 0, max_items: 100 },
+    { items: null, max_items: 30 },
+    { has_more: false },
+  ]) {
+    const r = bag.normalizeBag({ err_code: 0, data });
+    assert.ok(r, JSON.stringify(data));
+    assert.deepStrictEqual(r.items, []);
+    assert.strictEqual(r.total, 0);
+    assert.strictEqual(r.maxItems, Number(data.max_items) || 0);
+    assert.strictEqual(r.hasMore, false);
+  }
+});
+
+test('normalizeBag: sem lista e sem nenhum campo de sacola continua sendo resposta inesperada', () => {
+  assert.strictEqual(bag.normalizeBag({ err_code: 0, data: {} }), null);
+  assert.strictEqual(bag.normalizeBag({ err_code: 0, data: { items: 'x' } }), null);
+  assert.strictEqual(bag.normalizeBag({ err_code: 0, data: { foo: 1 } }), null);
+  assert.strictEqual(bag.normalizeBag({ err_code: 0, data: null }), null);
+  assert.strictEqual(bag.normalizeBag({ err_code: 7, data: { items: null, total_count: 0 } }), null);
+});
+
+test('readBag: sacola vazia vira {ok:true, items:[]}', async () => {
+  const r = await bag.readBag('1', fakeFetch([{ ok: true, status: 200, json: async () => ({ err_code: 0, data: { items: null, total_count: 0, max_items: 100 } }) }]));
+  assert.deepStrictEqual(r, { ok: true, items: [], total: 0, maxItems: 100 });
+});
+
 test('normalizeBag: o cartão guarda o item original (raw) — mesma referência, sem alterar', () => {
   const original = { id: 5, item_id: 50, shop_id: 1, name: 'Tênis', label: 'oferta', affiliate: { x: 1 }, price: '9.90' };
   const antes = JSON.stringify(original);

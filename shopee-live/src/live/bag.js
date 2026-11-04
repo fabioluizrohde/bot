@@ -71,8 +71,12 @@
   function normalizeBag(json) {
     if (!json || json.err_code !== 0) return null;
     const data = json.data;
-    if (!data || !Array.isArray(data.items)) return null;
-    const items = data.items
+    if (!data || typeof data !== 'object') return null;
+    // Sacola vazia: sucesso, com os campos de uma sacola, mas sem a lista (ausente ou nula).
+    const temCamposDeSacola = ['total_count', 'max_items', 'has_more'].some((k) => k in data);
+    const lista = data.items == null && temCamposDeSacola ? [] : data.items;
+    if (!Array.isArray(lista)) return null;
+    const items = lista
       .filter((it) => it && typeof it === 'object' && hasValidId(it)) // sem número válido: ignora (não mostra "NaN")
       .map(toCard).sort((a, b) => a.n - b.n);
     return {
