@@ -58,6 +58,14 @@ test('renderBagTab: item esgotado/removido fica apagado; foto some se falhar', (
   assert.ok(html.includes('img-1'));
 });
 
+// Conferido na live real em 2026-11-03: o servidor de fotos (cf.shopee.com.br) recusa o carregamento
+// comum de <img> mas entrega a foto quando o pedido é feito no modo CORS (crossorigin="anonymous").
+test('renderBagTab: toda foto pede o modo CORS (crossorigin="anonymous")', () => {
+  const html = bagTab.renderBagTab(base({ itens: [card(1), card(2)], total: 2 }));
+  assert.strictEqual(count(html, '<img'), 2);
+  assert.strictEqual(count(html, 'crossorigin="anonymous"'), 2);
+});
+
 test('renderBagTab: preço antigo riscado', () => {
   const html = bagTab.renderBagTab(base({ itens: [card(1, { priceBefore: 'R$20,00' })], total: 1 }));
   assert.ok(html.includes('<s>R$20,00</s>'));

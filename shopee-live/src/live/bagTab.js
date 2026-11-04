@@ -63,7 +63,7 @@
     const apagado = c.outOfStock || c.removed ? ' apagado' : '';
     // Sem onerror embutido (a página pode bloquear): o painel esconde a foto que falhar.
     const foto = c.image && !comErro.has(c.image)
-      ? `<img src="${esc(SLA.bag.imageUrl(c.image))}" alt="" data-img="${esc(c.image)}">`
+      ? `<img src="${esc(SLA.bag.imageUrl(c.image))}" alt="" crossorigin="anonymous" data-img="${esc(c.image)}">`
       : '';
     const antes = c.priceBefore ? ` <s>${esc(c.priceBefore)}</s>` : '';
     const aviso = c.removed ? ' <span class="mut">(removido)</span>' : c.outOfStock ? ' <span class="mut">(esgotado)</span>' : '';
