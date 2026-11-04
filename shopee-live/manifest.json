@@ -23,6 +23,7 @@
         "src/live/addProducts.js",
         "src/live/bag.js",
         "src/live/panel.js",
+        "src/live/showGuard.js",
         "src/live/bagTab.js"
       ],
       "run_at": "document_idle"

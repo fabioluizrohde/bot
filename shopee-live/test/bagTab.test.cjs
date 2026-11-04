@@ -245,3 +245,21 @@ test('renderBagTab: falha sem lista mostra só o erro (sem contador e sem "desat
   const c = bagTab.renderBagTab(bagTab.nextState({ ...bagTab.initialState(), status: 'ok', itens: [card(1)], total: 1, maxItems: 100 }, { ok: false, reason: 'rede' }));
   assert.ok(c.includes('<b>1 de 100</b>') && c.includes('Lista desatualizada'));
 });
+
+test('avisoDeErro: com detalhe mostra motivo e detalhe', () => {
+  assert.strictEqual(bagTab.avisoDeErro({ ok: false, reason: 'http', detail: '403' }), 'Não consegui trocar o produto (http: 403).');
+  assert.strictEqual(bagTab.avisoDeErro({ ok: false, reason: 'rede', detail: 'timeout' }), 'Não consegui trocar o produto (rede: timeout).');
+});
+
+test('avisoDeErro: sem detalhe mostra só o motivo', () => {
+  assert.strictEqual(bagTab.avisoDeErro({ ok: false, reason: 'rede' }), 'Não consegui trocar o produto (rede).');
+  assert.strictEqual(bagTab.avisoDeErro({ ok: false, reason: 'recusado', detail: '' }), 'Não consegui trocar o produto (recusado).');
+});
+
+test('avisoDeErro: resultado sem motivo vira "erro"', () => {
+  assert.strictEqual(bagTab.avisoDeErro(undefined), 'Não consegui trocar o produto (erro).');
+});
+
+test('AVISO_DESLIGADO: texto fixo', () => {
+  assert.strictEqual(bagTab.AVISO_DESLIGADO, 'O Mostrar foi desligado nesta live após 2 erros. Use a tela da Shopee.');
+});

@@ -11,6 +11,15 @@
 
   const ERROS = { rede: 'sem conexão', http: 'a Shopee respondeu com erro', formato: 'resposta inesperada' };
 
+  const AVISO_DESLIGADO = 'O Mostrar foi desligado nesta live após 2 erros. Use a tela da Shopee.';
+
+  // Aviso quando a Shopee não trocou o produto: "(motivo: detalhe)" ou só "(motivo)".
+  function avisoDeErro(r) {
+    const motivo = (r && r.reason) || 'erro';
+    const detalhe = r && r.detail;
+    return `Não consegui trocar o produto (${motivo}${detalhe ? `: ${detalhe}` : ''}).`;
+  }
+
   function initialState() {
     return { status: 'idle', itens: [], total: 0, maxItems: 0, query: '', desatualizada: false, erro: '', falhas: 0, modo: 'mostrar', noAr: null, trocando: false, aviso: '' };
   }
@@ -107,6 +116,8 @@
     let lendo = false;
     let ultimaLeitura = 0;
     let idDaLista = null; // sessão da lista que está na tela
+    // Travas do Mostrar: valem só enquanto a página não recarrega (recarregar religa o Mostrar).
+    let guarda = SLA.showGuard ? SLA.showGuard.initialGuard() : null; // sem o módulo, o Mostrar fica inativo
 
     async function ler() {
       if (lendo) return;
@@ -143,11 +154,56 @@
 
     function render() { return renderBagTab({ ...state, fotosComErro: fotosQueFalharam }); }
 
+    function redesenhar() { try { SLA.panel.redraw(); } catch (e) { /* painel fora do ar */ } }
+
+    // Modo Mostrar: um clique real do usuário num produto = um pedido à Shopee, e nada mais.
+    async function mostrar(el, ev) {
+      // Clique simulado (ou sem evento): não faz nada, nem mensagem.
+      if (!ev || ev.isTrusted !== true || ev.type !== 'click') return;
+      if (!guarda || state.modo !== 'mostrar') return;
+      const pode = SLA.showGuard.canShow(guarda, Date.now(), ev);
+      if (!pode.ok) {
+        if (pode.motivo === 'desligado') { state = { ...state, aviso: AVISO_DESLIGADO }; redesenhar(); }
+        return; // 'em_andamento' e 'cedo': ignora em silêncio
+      }
+      const n = el && el.dataset ? el.dataset.n : undefined;
+      const card = state.itens.find((c) => String(c.n) === String(n));
+      if (!card || card.outOfStock || card.removed) return;
+      const sessionId = SLA.bag.sessionIdFromHref(location.href);
+      if (!sessionId || sessionId !== idDaLista) return; // a lista na tela é de outra live
+      guarda = SLA.showGuard.startShow(guarda, Date.now());
+      let reler = false;
+      try {
+        state = { ...state, trocando: true };
+        redesenhar();
+        const r = await SLA.bag.showItem(sessionId, card); // card.raw vai direto da memória
+        guarda = SLA.showGuard.finishShow(guarda, { ok: !!(r && r.ok) });
+        if (r && r.ok) {
+          state = { ...state, noAr: card.itemId, aviso: '' };
+          reler = true;
+        } else {
+          state = { ...state, aviso: guarda.desligado ? AVISO_DESLIGADO : avisoDeErro(r) }; // sem nova tentativa
+        }
+      } catch (e) {
+        if (guarda.emAndamento) guarda = SLA.showGuard.finishShow(guarda, { ok: false });
+        state = { ...state, aviso: guarda.desligado ? AVISO_DESLIGADO : avisoDeErro({ reason: 'erro', detail: String((e && e.message) || e) }) };
+      } finally {
+        state = { ...state, trocando: false };
+        redesenhar();
+      }
+      if (reler) ler().catch(() => {});
+    }
+
     SLA.panel.registerArea('sacola', render, {
       actions: {
         'bag-q': (el) => { state = { ...state, query: el.value }; SLA.panel.redraw(); },
-        'bag-tile': () => {}, // a Task 8 liga o Mostrar
-        'bag-modo': () => {}, // só "mostrar" existe por enquanto
+        'bag-tile': (el, ev) => mostrar(el, ev).catch(() => {}),
+        'bag-modo': (el, ev) => {
+          if (ev && ev.type && ev.type !== 'click') return;
+          if (!el || el.disabled || el.dataset.modo !== 'mostrar') return; // só "mostrar" existe por enquanto
+          state = { ...state, modo: 'mostrar' };
+          redesenhar();
+        },
         'bag-refresh': (el, ev) => {
           if (ev && ev.type && ev.type !== 'click') return;
           state = { ...state, falhas: 0 };
@@ -166,7 +222,7 @@
   }
 
   SLA.bagTab = {
-    POLL_MS, MAX_FALHAS, FRESCO_MS, initialState, renderBagTab, shouldPoll, nextState,
+    POLL_MS, MAX_FALHAS, FRESCO_MS, AVISO_DESLIGADO, avisoDeErro, initialState, renderBagTab, shouldPoll, nextState,
     noSessionState, clearForNewSession, sessionStep, markImageFailed, failedImages, init,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = SLA.bagTab;
