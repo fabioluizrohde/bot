@@ -57,6 +57,7 @@
       discount: Number(it.discount) || 0,
       outOfStock: !!it.is_oos,
       removed: !!(it.is_del || it.is_unlisted || it.is_prohibited),
+      raw: it, // item original da Shopee, mesma referência (volta intacto como corpo de pedidos)
     };
   }
 

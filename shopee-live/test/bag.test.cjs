@@ -85,6 +85,26 @@ test('normalizeBag devolve null para resposta inválida', () => {
   assert.strictEqual(bag.normalizeBag({ err_code: 0, data: {} }), null);
 });
 
+test('normalizeBag: o cartão guarda o item original (raw) — mesma referência, sem alterar', () => {
+  const original = { id: 5, item_id: 50, shop_id: 1, name: 'Tênis', label: 'oferta', affiliate: { x: 1 }, price: '9.90' };
+  const antes = JSON.stringify(original);
+  const r = bag.normalizeBag({ err_code: 0, data: { items: [original] } });
+  assert.strictEqual(r.items[0].raw, original);
+  assert.strictEqual(JSON.stringify(r.items[0].raw), antes);
+  assert.strictEqual(r.items[0].raw.label, 'oferta');
+  assert.deepStrictEqual(r.items[0].raw.affiliate, { x: 1 });
+  // os demais campos continuam iguais
+  assert.strictEqual(r.items[0].n, 5);
+  assert.strictEqual(r.items[0].price, 'R$9,90');
+});
+
+test('readBag: o cartão mantém o raw do item recebido', async () => {
+  const itens = mkItems(1, 2);
+  const r = await bag.readBag('1', fakeFetch([page(itens)]));
+  assert.strictEqual(r.items[0].raw, itens[0]);
+  assert.strictEqual(r.items[1].raw, itens[1]);
+});
+
 test('formatPrice', () => {
   assert.strictEqual(bag.formatPrice('19.99'), 'R$19,99');
   assert.strictEqual(bag.formatPrice('1234.5'), 'R$1.234,50');
