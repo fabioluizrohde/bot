@@ -205,6 +205,15 @@
 
   const captchaVisible = () => !!document.querySelector(SLA.selectors.captchaMarker);
 
+  // Para favoritar, a extensão rola a página até o coração. Depois do resultado, volta ao topo para a busca
+  // ficar à mão no próximo ID. Repete duas vezes porque a Shopee pode rolar de novo enquanto termina de carregar.
+  function voltarAoTopo() {
+    const sobe = () => { try { if (window.scrollY > 0) window.scrollTo({ top: 0, left: 0, behavior: 'instant' }); } catch (_) { /* ignora */ } };
+    sobe();
+    setTimeout(sobe, 400);
+    setTimeout(sobe, 1200);
+  }
+
   // Envia o resultado (a não ser que o ID tenha sido pulado) e atualiza o aviso se a aba continua.
   async function sendResult(id, status, name) {
     if (pulados.has(id)) return null;
@@ -218,7 +227,7 @@
       if (k) { msg.shopId = k.shopId; msg.itemId = k.itemId; }
     }
     const nb = await send(msg);
-    if (keepsTab(nb)) refresh().catch(() => {});
+    if (keepsTab(nb)) { voltarAoTopo(); refresh().catch(() => {}); }
     return nb;
   }
 
@@ -234,7 +243,7 @@
     hideNotice();
     guardarUltimo(id, 'nao_achei');
     const nb = await send({ type: 'hand:result', id, status: 'nao_achei' });
-    if (keepsTab(nb)) refresh().catch(() => {});
+    if (keepsTab(nb)) { voltarAoTopo(); refresh().catch(() => {}); }
   }
 
   // Página de um produto NOVO (a URL já foi conferida): lê o nome, favorita se preciso e responde.
