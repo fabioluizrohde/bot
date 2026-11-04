@@ -415,13 +415,12 @@ test('showItem: posta type show com path certo e body {item: JSON do card.raw}; 
   assert.strictEqual(w.listeners.length, 0);
 });
 
-test('showItem: resposta vazia (data:{}) ou de outro produto NÃO é sucesso', async () => {
-  for (const text of ['{"err_code":0,"err_msg":"sucesso","data":{}}', '{"err_code":0}', '{"err_code":0,"data":null}',
-    '{"err_code":0,"data":{"item_id":99,"shop_id":22}}']) {
+test('showItem: a resposta real do show é data:{} e conta como sucesso (conferido na live em 2026-11-04)', async () => {
+  for (const text of ['{"err_code":0,"err_msg":"sucesso","data":{}}', '{"err_code":0}', '{"err_code":0,"data":null}']) {
     const w = fakeWin();
     const p = bag.showItem(SID, cardShow(), w);
     w.answer({ source: 'sla-bridge', id: w.posted[0].msg.id, ok: true, status: 200, text });
-    assert.deepStrictEqual(await p, { ok: false, reason: 'http', detail: 'sem efeito' }, text);
+    assert.deepStrictEqual(await p, { ok: true }, text);
   }
 });
 
