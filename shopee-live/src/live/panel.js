@@ -262,6 +262,13 @@
     return Number.isFinite(h) && h > 0 ? Math.round(0.8 * h) : NaN;
   }
 
+  // Teto de altura do Lote conforme a altura do painel (sem SLA.layout: fica o 40vh do CSS).
+  function aplicarLoteMax(box, lote) {
+    if (!lote) return;
+    const max = SLA.layout && typeof SLA.layout.loteMaxHeight === 'function' ? SLA.layout.loteMaxHeight(alturaPainel(box)) : NaN;
+    lote.style.maxHeight = Number.isFinite(max) && max > 0 ? max + 'px' : '';
+  }
+
   const CSS = `
     :host{all:initial}
     .box{position:fixed;top:80px;right:16px;width:300px;max-height:80vh;display:flex;flex-direction:column;z-index:2147483647;
@@ -276,7 +283,8 @@
     .lote.recolhido{padding:6px 10px}
     .area{flex:1;min-height:0;overflow:auto;padding:0 10px 10px}
     .area:empty{display:none}
-    .grip{flex:none}
+    .grip{flex:none;align-self:flex-end;width:16px;height:16px;cursor:nwse-resize;user-select:none;
+      background:linear-gradient(135deg,transparent 0 50%,#bbb 50% 58%,transparent 58% 70%,#bbb 70% 78%,transparent 78%)}
     h4{margin:8px 0 4px}
     ul{list-style:none;margin:0 0 8px;padding:0}
     li{display:flex;align-items:center;gap:6px;padding:2px 0}
@@ -327,8 +335,7 @@
     if (lote) {
       lote.classList.toggle('recolhido', recolhido);
       lote.innerHTML = recolhido ? `<span class="mut">${esc(loteSummary(state.batch, state.ids))}</span>` : renderLote();
-      const max = SLA.layout && typeof SLA.layout.loteMaxHeight === 'function' ? SLA.layout.loteMaxHeight(alturaPainel(box)) : NaN;
-      lote.style.maxHeight = Number.isFinite(max) && max > 0 ? max + 'px' : ''; // vazio: fica o 40vh do CSS
+      aplicarLoteMax(box, lote);
     }
     if (area) area.innerHTML = areas.map(renderArea).join('');
     if (focusKey) {
@@ -472,24 +479,72 @@
     }
   }
 
-  function enableDrag(box, handle) {
+  // ---- Posição e tamanho do painel (sem teste automático de DOM; a conta está em layout.js) ----
+  let rectAtual = null; // {left, top, width, height} em px; null = layout.js ausente (vale o CSS)
+  let saveTimer = null;
+
+  function aplicarRect(box, rect) {
+    try {
+      rectAtual = rect;
+      box.style.left = rect.left + 'px';
+      box.style.top = rect.top + 'px';
+      box.style.width = rect.width + 'px';
+      box.style.height = rect.height + 'px';
+      box.style.right = 'auto';
+      box.style.maxHeight = 'none';
+      aplicarLoteMax(box, shadow && shadow.querySelector('.lote'));
+    } catch (_) { /* ignora */ }
+  }
+
+  // Grava o retângulo ~400 ms depois do último ajuste; um save pendente é sempre substituído.
+  function salvarRectDepois() {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      saveTimer = null;
+      try {
+        if (rectAtual) Promise.resolve(chrome.storage.local.set({ panelRect: rectAtual })).catch(() => {});
+      } catch (_) { /* ignora */ }
+    }, 400);
+  }
+
+  // Arrasto genérico: parte do retângulo do mousedown + deslocamento do mouse; calc(rect, dx, dy) dá o novo.
+  function iniciarArrasto(e, box, calc) {
+    if (!SLA.layout || !rectAtual) return;
+    e.preventDefault(); // evita selecionar texto da página
+    const inicio = rectAtual;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    const move = (ev) => {
+      try { aplicarRect(box, calc(inicio, ev.clientX - x0, ev.clientY - y0, window)); } catch (_) { /* ignora */ }
+    };
+    const up = () => {
+      document.removeEventListener('mousemove', move, true);
+      document.removeEventListener('mouseup', up, true);
+      salvarRectDepois();
+    };
+    document.addEventListener('mousemove', move, true);
+    document.addEventListener('mouseup', up, true);
+  }
+
+  function enableDrag(box, handle, grip) {
     handle.addEventListener('mousedown', (e) => {
       if (e.target && e.target.closest && e.target.closest('button')) return; // ⚙ e recolher não arrastam
-      const r = box.getBoundingClientRect();
-      const dx = e.clientX - r.left;
-      const dy = e.clientY - r.top;
-      const move = (ev) => {
-        box.style.left = Math.max(0, ev.clientX - dx) + 'px';
-        box.style.top = Math.max(0, ev.clientY - dy) + 'px';
-        box.style.right = 'auto';
-      };
-      const up = () => {
-        document.removeEventListener('mousemove', move, true);
-        document.removeEventListener('mouseup', up, true);
-      };
-      document.addEventListener('mousemove', move, true);
-      document.addEventListener('mouseup', up, true);
-      e.preventDefault();
+      iniciarArrasto(e, box, (r, dx, dy, w) => SLA.layout.rectAfterMove(r, dx, dy, w));
+    });
+    if (grip) grip.addEventListener('mousedown', (e) => iniciarArrasto(e, box, (r, dx, dy, w) => SLA.layout.rectAfterResize(r, dx, dy, w)));
+  }
+
+  // Lê o retângulo salvo (ou o padrão), aplica ao painel e passa a seguir o tamanho da janela.
+  async function restaurarRect(box) {
+    if (!SLA.layout) return;
+    let saved = null;
+    try {
+      const s = await chrome.storage.local.get('panelRect');
+      saved = s && s.panelRect;
+    } catch (_) { /* ignora: vale o padrão */ }
+    try { aplicarRect(box, SLA.layout.sanitizeRect(saved, window)); } catch (_) { /* ignora */ }
+    window.addEventListener('resize', () => {
+      try { if (rectAtual) aplicarRect(box, SLA.layout.sanitizeRect(rectAtual, window)); } catch (_) { /* ignora */ }
     });
   }
 
@@ -500,7 +555,7 @@
     shadow = host.attachShadow({ mode: 'open' });
     shadow.innerHTML = `<style>${CSS}</style><div class="box"><div class="head">${renderHead(false)}</div>`
       + '<div class="menu" hidden></div><div class="lote"></div><div class="area"></div><div class="grip"></div></div>';
-    enableDrag(shadow.querySelector('.box'), shadow.querySelector('.head'));
+    enableDrag(shadow.querySelector('.box'), shadow.querySelector('.head'), shadow.querySelector('.grip'));
     shadow.addEventListener('click', (e) => {
       const el = e.target.closest && e.target.closest('[data-act]');
       if (el && el.dataset.act !== 'openIn') onAction(el, e).catch(() => {});
@@ -527,6 +582,7 @@
     document.documentElement.appendChild(host);
     document.addEventListener('mouseup', onMouseUp, true);
     chrome.runtime.onMessage.addListener(onMessage);
+    await restaurarRect(shadow.querySelector('.box'));
     try {
       const s = await chrome.storage.local.get('openIn');
       if (s && (s.openIn === 'tab' || s.openIn === 'window')) state.openIn = s.openIn;
