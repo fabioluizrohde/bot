@@ -255,6 +255,29 @@
     }
   }
 
+  // Remove UM produto da sacola (pela ponte, DELETE items). itemId: inteiro positivo.
+  // Nunca lança nem rejeita. Resultados: {ok:true} | {ok:false, reason:'recusado'|'rede'|'http', detail}.
+  async function removeItem(sessionId, itemId, win, opts) {
+    try {
+      if (typeof sessionId !== 'string' || !/^\d+$/.test(sessionId)
+        || typeof itemId !== 'number' || !Number.isSafeInteger(itemId) || itemId <= 0) {
+        return { ok: false, reason: 'recusado' };
+      }
+      const w = win || (typeof window !== 'undefined' ? window : null);
+      if (!w) return { ok: false, reason: 'rede', detail: 'sem janela' };
+      const timeoutMs = (opts && opts.timeoutMs) || SHOW_TIMEOUT_MS;
+      let d;
+      try {
+        d = await bridgeRoundTrip(w, { type: 'remove', path: `/webapi/v1/session/${sessionId}/items`, body: { item_ids: [itemId] } }, timeoutMs);
+      } catch (e) {
+        return { ok: false, reason: 'rede', detail: String((e && e.message) || e) };
+      }
+      return interpretWrite(d);
+    } catch (e) {
+      return { ok: false, reason: 'rede', detail: String((e && e.message) || e) };
+    }
+  }
+
   // Lê a sacola inteira (com paginação de segurança). Nunca lança: devolve { ok:false, reason }.
   async function readBag(sessionId, fetchFn) {
     // Sem fetch injetado: usa a ponte da página (resolvida na hora da chamada).
@@ -296,6 +319,6 @@
     }
   }
 
-  SLA.bag = { IMG_BASE, imageUrl, sessionIdFromHref, formatPrice, normalizeBag, filterBag, readBag, makeBridgeFetch, showItem, addItems, pinItem, ADD_MAX_ITEMS, SHOW_TIMEOUT_MS };
+  SLA.bag = { IMG_BASE, imageUrl, sessionIdFromHref, formatPrice, normalizeBag, filterBag, readBag, makeBridgeFetch, showItem, addItems, pinItem, removeItem, ADD_MAX_ITEMS, SHOW_TIMEOUT_MS };
   if (typeof module !== 'undefined' && module.exports) module.exports = SLA.bag;
 })(typeof window !== 'undefined' ? window : globalThis);

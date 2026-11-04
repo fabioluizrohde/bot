@@ -45,6 +45,8 @@ Acima da grade há o seletor de modo (**Mostrar**).
 
 **Mover p/ cima:** o produto marcado **No ar** tem uma etiqueta vermelha embaixo da foto. Ao passar o mouse, ela vira **Mover p/ cima**; um clique fixa o produto no topo da lista da live (é o mesmo pedido do botão nativo da Shopee, `POST items/pin`, um produto por vez). Só funciona com clique real, um pedido por vez, e 2 erros seguidos desligam o Mover até recarregar a página.
 
+**Remover da sacola:** ao passar o mouse num card aparece um **✕** no canto superior direito. O 1º clique troca o ✕ por **Remover?** (some sozinho em 4 segundos); o 2º clique remove (`DELETE items`, um produto por vez). O produto que está **No ar** nunca tem o ✕. Só com clique real, e 2 erros seguidos desligam o Remover até recarregar a página. Para desfazer, adicione o produto de novo pela tela da Shopee.
+
 No modo Mostrar, **um clique numa foto coloca aquele produto no ar**. Regras de segurança:
 
 - **Só o seu clique de verdade conta.** Cliques simulados por programa são ignorados.
@@ -106,7 +108,7 @@ No **⚙** do cabeçalho do painel: **Abrir a Shopee em** aba (padrão) ou janel
 
 ## O que a extensão nunca faz sozinha
 
-- Nunca clica em **Remover**. A adição à sacola é feita só com os produtos do seu lote, por uma chamada interna restrita (`PUT add_items`, até 20 produtos por pedido); o Confirmar da Shopee deixou de ser necessário.
+- Na tela da Shopee, nunca clica em **Remover** (o remover da extensão é só pela grade da Sacola, veja abaixo). A adição à sacola é feita só com os produtos do seu lote, por uma chamada interna restrita (`PUT add_items`, até 20 produtos por pedido); o Confirmar da Shopee deixou de ser necessário.
 - Só coloca um produto no ar (**Mostrar**) quando **você clica numa foto**: um pedido por clique seu, nunca automático.
 - Não responde no chat e não mexe em cupons.
 - Não desfavorita produtos de lotes antigos.

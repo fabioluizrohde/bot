@@ -1,13 +1,15 @@
 // Ponte com a página: roda no mundo da própria página da live (manifest "world": "MAIN").
 // A Shopee recusa (403) pedidos feitos direto pela extensão; o fetch da própria página funciona.
-// Esta ponte faz só QUATRO tipos de pedido, todos restritos:
+// Esta ponte faz só CINCO tipos de pedido, todos restritos:
 //  - leitura (GET, fetch da página): a lista da sacola;
 //  - escrita (PUT, XMLHttpRequest da página): "Mostrar" um item, em /session/<n>/show, com o
 //    corpo validado ({item: "<o item da lista da sacola, convertido em texto JSON>"});
 //  - escrita (PUT, XMLHttpRequest da página): adicionar à sacola, em /session/<n>/add_items, só com
 //    {items:[{shop_id,item_id}]} (até 20, inteiros positivos);
 //  - escrita (POST, XMLHttpRequest da página): fixar UM item no topo, em /session/<n>/items/pin, só com
-//    {items:[{item_id,shop_id}]} (exatamente 1, inteiros positivos).
+//    {items:[{item_id,shop_id}]} (exatamente 1, inteiros positivos);
+//  - escrita (DELETE, XMLHttpRequest da página): remover UM item da sacola, em /session/<n>/items, só com
+//    {item_ids:[<número>]} (exatamente 1, inteiro positivo).
 // Não copia nem inventa cabeçalhos de segurança (só Content-Type). Não depende de nenhum outro
 // arquivo da extensão.
 (function () {
@@ -167,6 +169,35 @@
     return xhrWrite('POST', data, getXhr);
   }
 
+  // ---- Escrita restrita: remover UM item da sacola (DELETE items) ----
+  // Conferido na live real em 2026-11-04: é o que o botão nativo de remover da Shopee envia.
+  const REMOVE_RE = /^\/webapi\/v1\/session\/\d+\/items$/;
+
+  function isAllowedRemovePath(path) {
+    return typeof path === 'string' && REMOVE_RE.test(path);
+  }
+
+  // O corpo só pode ter "item_ids" com EXATAMENTE 1 número inteiro positivo.
+  function validateRemoveBody(body) {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
+    if (Object.keys(body).join() !== 'item_ids') return false;
+    const ids = body.item_ids;
+    return Array.isArray(ids) && ids.length === 1 && idOk(ids[0]);
+  }
+
+  function handleRemoveRequest(data, getXhr) {
+    if (!data || typeof data !== 'object' || data.source !== 'sla-ext' || data.type !== 'remove') {
+      return Promise.resolve(reply(data && typeof data === 'object' ? data.id : undefined, { error: 'pedido invalido' }));
+    }
+    if (!isAllowedRemovePath(data.path) || !validateRemoveBody(data.body)) {
+      return Promise.resolve(reply(data.id, { error: 'pedido recusado' }));
+    }
+    return xhrWrite('DELETE', data, getXhr);
+  }
+
+  bridge.isAllowedRemovePath = isAllowedRemovePath;
+  bridge.validateRemoveBody = validateRemoveBody;
+  bridge.handleRemoveRequest = handleRemoveRequest;
   bridge.isAllowedPinPath = isAllowedPinPath;
   bridge.validatePinBody = validatePinBody;
   bridge.handlePinRequest = handlePinRequest;
@@ -207,6 +238,10 @@
                 .catch(() => { /* nunca lança */ });
             } else if (d.type === 'pin') {
               handlePinRequest(d, () => window.XMLHttpRequest)
+                .then((result) => window.postMessage(result, location.origin))
+                .catch(() => { /* nunca lança */ });
+            } else if (d.type === 'remove') {
+              handleRemoveRequest(d, () => window.XMLHttpRequest)
                 .then((result) => window.postMessage(result, location.origin))
                 .catch(() => { /* nunca lança */ });
             }

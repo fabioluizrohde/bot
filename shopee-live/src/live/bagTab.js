@@ -14,6 +14,8 @@
   const AVISO_DESLIGADO = 'O Mostrar foi desligado nesta live após 2 erros. Use a tela da Shopee.';
 
   // Aviso quando a Shopee não trocou o produto: "(motivo: detalhe)" ou só "(motivo)".
+  const CONFIRMA_MS = 4000;
+  const AVISO_RM_DESLIGADO = 'O Remover foi desligado nesta live após 2 erros. Use a tela da Shopee.';
   const AVISO_PIN_DESLIGADO = 'O Mover p/ cima foi desligado nesta live após 2 erros. Use a tela da Shopee.';
 
   function avisoDeErro(r) {
@@ -48,8 +50,8 @@
   // O que é da live anterior e não pode passar para outra: "No ar", "trocando" e avisos de erro.
   // Fica só o aviso de Mostrar desligado (a trava vale até recarregar a página, não por live).
   function semRestosDaLive(prev) {
-    const fica = prev && (prev.aviso === AVISO_DESLIGADO || prev.aviso === AVISO_PIN_DESLIGADO) ? prev.aviso : '';
-    return { noAr: null, trocando: false, fixando: false, aviso: fica };
+    const fica = prev && (prev.aviso === AVISO_DESLIGADO || prev.aviso === AVISO_PIN_DESLIGADO || prev.aviso === AVISO_RM_DESLIGADO) ? prev.aviso : '';
+    return { noAr: null, trocando: false, fixando: false, confirmando: null, aviso: fica };
   }
 
   // Sessão sem "?session=" na URL: mensagem própria, sem lista e sem contar como falha de leitura.
@@ -102,6 +104,14 @@
     // Etiqueta embaixo da foto: no produto "No ar" mostra "No ar"; ao passar o mouse (e nos outros produtos,
     // só no hover) vira "Mover p/ cima" (clicável). Sem o botão enquanto há pedido em andamento ou produto esgotado.
     const podeMover = !semEstoque && !m.fixando && !m.trocando && !m.desligado && !m.pinDesligado;
+    // ✕ de remover (canto superior direito): nunca no produto No ar; pede confirmação no próprio card.
+    const podeRemover = podeMover && !noAr && !m.rmDesligado;
+    const confirmando = podeRemover && m.confirmando != null && String(m.confirmando) === String(c.itemId);
+    const botaoRm = podeRemover
+      ? (confirmando
+        ? `<span class="rm sim" data-act="bag-rm" data-item="${item}">Remover?</span>`
+        : `<span class="rm" data-act="bag-rm" data-item="${item}" title="Remover da sacola">✕</span>`)
+      : '';
     let etiqueta = '';
     if (podeMover) {
       etiqueta = `<span class="tag${noAr ? '' : ' off'}" data-act="bag-pin" data-item="${item}"><span class="t1">${noAr ? 'No ar' : ''}</span><span class="t2">Mover p/ cima</span></span>`;
@@ -109,7 +119,7 @@
       etiqueta = '<span class="tag"><span class="t1">No ar</span></span>';
     }
     const titulo = `${esc(c.name)} — ${esc(c.price)}${c.priceBefore ? ` (antes ${esc(c.priceBefore)})` : ''}${m.desligado ? ' · Mostrar desligado nesta live' : ''}`;
-    return `<button class="${cls.join(' ')}" data-act="bag-tile" data-n="${esc(c.n)}" data-item="${item}" title="${titulo}"${off}>${foto}<span class="tn">${esc(c.n)}</span>${etiqueta}</button>`;
+    return `<button class="${cls.join(' ')}" data-act="bag-tile" data-n="${esc(c.n)}" data-item="${item}" title="${titulo}"${off}>${foto}<span class="tn">${esc(c.n)}</span>${etiqueta}${botaoRm}</button>`;
   }
 
   function renderBagTab(m) {
@@ -149,6 +159,7 @@
     // Travas do Mostrar: valem só enquanto a página não recarrega (recarregar religa o Mostrar).
     let guarda = SLA.showGuard ? SLA.showGuard.initialGuard() : null; // sem o módulo, o Mostrar fica inativo
     let guardaPin = SLA.showGuard ? SLA.showGuard.initialGuard() : null; // mesmas travas para o Mover p/ cima
+    let guardaRm = SLA.showGuard ? SLA.showGuard.initialGuard() : null; // e para o Remover
 
     async function ler() {
       if (lendo) return;
@@ -185,7 +196,7 @@
 
     function parar() { if (timer) { clearInterval(timer); timer = null; } }
 
-    function render() { return renderBagTab({ ...state, fotosComErro: fotosQueFalharam, desligado: !!(guarda && guarda.desligado), pinDesligado: !!(guardaPin && guardaPin.desligado) }); }
+    function render() { return renderBagTab({ ...state, fotosComErro: fotosQueFalharam, desligado: !!(guarda && guarda.desligado), pinDesligado: !!(guardaPin && guardaPin.desligado), rmDesligado: !!(guardaRm && guardaRm.desligado) }); }
 
     function redesenhar() { try { SLA.panel.redraw(); } catch (e) { /* painel fora do ar */ } }
 
@@ -263,11 +274,63 @@
       if (reler) ler().catch(() => {});
     }
 
+    // Remover da sacola: 1º clique no ✕ pede confirmação no próprio card; o 2º (em até 4 s) envia o pedido.
+    // Nunca remove o produto que está No ar. Um clique real = no máximo um pedido.
+    let timerConfirma = null;
+    function limparConfirmacao() { if (timerConfirma) { clearTimeout(timerConfirma); timerConfirma = null; } }
+    async function remover(el, ev) {
+      if (!ev || ev.isTrusted !== true || ev.type !== 'click') return;
+      if (!guardaRm) return;
+      const valor = el && el.dataset ? el.dataset.item : undefined;
+      const card = cardByItemId(state.itens, valor);
+      if (!card || card.outOfStock || card.removed) return;
+      if (state.noAr != null && String(card.itemId) === String(state.noAr)) return; // nunca o que está no ar
+      if (state.confirmando == null || String(state.confirmando) !== String(card.itemId)) {
+        limparConfirmacao();
+        state = { ...state, confirmando: card.itemId };
+        redesenhar();
+        timerConfirma = setTimeout(() => { timerConfirma = null; state = { ...state, confirmando: null }; redesenhar(); }, CONFIRMA_MS);
+        return;
+      }
+      limparConfirmacao();
+      state = { ...state, confirmando: null };
+      const pode = SLA.showGuard.canShow(guardaRm, Date.now(), ev);
+      if (!pode.ok) {
+        if (pode.motivo === 'desligado') state = { ...state, aviso: AVISO_RM_DESLIGADO };
+        redesenhar();
+        return;
+      }
+      const sessionId = SLA.bag.sessionIdFromHref(location.href);
+      if (!sessionId || sessionId !== idDaLista) { redesenhar(); return; }
+      guardaRm = SLA.showGuard.startShow(guardaRm, Date.now());
+      let reler = false;
+      try {
+        state = { ...state, fixando: true };
+        redesenhar();
+        const r = await SLA.bag.removeItem(sessionId, card.itemId);
+        guardaRm = SLA.showGuard.finishShow(guardaRm, { ok: !!(r && r.ok) });
+        if (r && r.ok) {
+          state = { ...state, aviso: 'Pedido enviado: produto removido da sacola.' };
+          reler = true;
+        } else {
+          state = { ...state, aviso: guardaRm.desligado ? AVISO_RM_DESLIGADO : `Não consegui remover o produto (${(r && r.reason) || 'erro'}${r && r.detail ? `: ${r.detail}` : ''}).` };
+        }
+      } catch (e) {
+        if (guardaRm.emAndamento) guardaRm = SLA.showGuard.finishShow(guardaRm, { ok: false });
+        state = { ...state, aviso: guardaRm.desligado ? AVISO_RM_DESLIGADO : 'Não consegui remover o produto: ' + String((e && e.message) || e) };
+      } finally {
+        state = { ...state, fixando: false };
+        redesenhar();
+      }
+      if (reler) ler().catch(() => {});
+    }
+
     SLA.panel.registerArea('sacola', render, {
       actions: {
         'bag-q': (el) => { state = { ...state, query: el.value }; SLA.panel.redraw(); },
         'bag-tile': (el, ev) => mostrar(el, ev).catch(() => {}),
         'bag-pin': (el, ev) => mover(el, ev).catch(() => {}),
+        'bag-rm': (el, ev) => remover(el, ev).catch(() => {}),
         'bag-modo': (el, ev) => {
           if (ev && ev.type && ev.type !== 'click') return;
           if (!el || el.disabled || el.dataset.modo !== 'mostrar') return; // só "mostrar" existe por enquanto
@@ -292,7 +355,7 @@
   }
 
   SLA.bagTab = {
-    POLL_MS, MAX_FALHAS, FRESCO_MS, AVISO_DESLIGADO, AVISO_PIN_DESLIGADO, avisoDeErro, initialState, renderBagTab, shouldPoll, nextState,
+    POLL_MS, MAX_FALHAS, FRESCO_MS, AVISO_DESLIGADO, AVISO_PIN_DESLIGADO, AVISO_RM_DESLIGADO, avisoDeErro, initialState, renderBagTab, shouldPoll, nextState,
     noSessionState, clearForNewSession, cardByItemId, sessionStep, markImageFailed, failedImages, init,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = SLA.bagTab;

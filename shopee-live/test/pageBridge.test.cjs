@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { isAllowedBridgePath, handleBridgeRequest, isAllowedShowPath, validateShowBody, handleShowRequest, isAllowedAddPath, validateAddBody, handleAddRequest, isAllowedPinPath, validatePinBody, handlePinRequest } = require('../src/live/pageBridge.js');
+const { isAllowedBridgePath, handleBridgeRequest, isAllowedShowPath, validateShowBody, handleShowRequest, isAllowedAddPath, validateAddBody, handleAddRequest, isAllowedPinPath, validatePinBody, handlePinRequest, isAllowedRemovePath, validateRemoveBody, handleRemoveRequest } = require('../src/live/pageBridge.js');
 
 const OK = '/webapi/v1/session/7898272/host/items';
 
@@ -318,6 +318,65 @@ test('handlePinRequest: pedido malformado e tipo errado', async () => {
   const get = () => { n++; return FakeXhr; };
   for (const d of [null, undefined, 'x', {}, pedidoPin({ source: 'outro' }), pedidoPin({ type: 'add' })]) {
     const r = await handlePinRequest(d, get);
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.error, 'pedido invalido');
+  }
+  assert.strictEqual(n, 0);
+});
+
+// ---- Remover da sacola (DELETE items) ----
+const RM = '/webapi/v1/session/7911410/items';
+const CORPO_RM = { item_ids: [58261159718] };
+const pedidoRm = (extra) => ({ source: 'sla-ext', type: 'remove', id: 'r1', path: RM, body: CORPO_RM, ...extra });
+
+test('isAllowedRemovePath: aceita só /session/<n>/items', () => {
+  assert.strictEqual(isAllowedRemovePath(RM), true);
+  for (const r of ['/webapi/v1/session/1/items/pin', '/webapi/v1/session/1/items/', '/webapi/v1/session/1/items?x=1',
+    '/webapi/v1/session/abc/items', '/webapi/v1/session/1/host/items', '//evil.com/x', 'https://x/y', '/webapi/v1/session/1/items/../x',
+    '', null, undefined, 42, {}]) {
+    assert.strictEqual(isAllowedRemovePath(r), false, String(r));
+  }
+});
+
+test('validateRemoveBody: só item_ids com exatamente 1 inteiro positivo', () => {
+  assert.strictEqual(validateRemoveBody(CORPO_RM), true);
+  const ruins = [null, undefined, 'x', [], {}, { item_ids: [] }, { item_ids: 'x' }, { item_ids: [1, 2] },
+    { item_ids: [1], extra: 1 }, { item_ids: ['1'] }, { item_ids: [NaN] }, { item_ids: [1.5] }, { item_ids: [0] },
+    { item_ids: [-1] }, { item_ids: [null] }, { items: [{ item_id: 1, shop_id: 2 }] }];
+  for (const b of ruins) assert.strictEqual(validateRemoveBody(b), false, JSON.stringify(b));
+});
+
+test('handleRemoveRequest: corpo válido faz o DELETE exato e resolve ok', async () => {
+  FakeXhr.modo = { status: 200, text: '{"err_code":0}' };
+  let n = 0;
+  const r = await handleRemoveRequest(pedidoRm(), () => { n++; return FakeXhr; });
+  const x = FakeXhr.last;
+  assert.strictEqual(n, 1);
+  assert.deepStrictEqual(x.calls, [['open', 'DELETE', RM, true]]);
+  assert.deepStrictEqual(x.headers, [['Content-Type', 'application/json;charset=UTF-8']]);
+  assert.strictEqual(x.withCredentials, true);
+  assert.strictEqual(x.sent, JSON.stringify(CORPO_RM));
+  assert.deepStrictEqual(r, { source: 'sla-bridge', id: 'r1', ok: true, status: 200, text: '{"err_code":0}' });
+});
+
+test('handleRemoveRequest: caminho ou corpo recusado nunca chama getXhr', async () => {
+  let n = 0;
+  const get = () => { n++; return FakeXhr; };
+  for (const d of [pedidoRm({ path: PIN }), pedidoRm({ path: SHOW }), pedidoRm({ path: 'https://evil.com/x' }),
+    pedidoRm({ body: {} }), pedidoRm({ body: null }), pedidoRm({ body: { item_ids: [1, 2] } })]) {
+    const r = await handleRemoveRequest(d, get);
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.error, 'pedido recusado');
+    assert.strictEqual(r.id, 'r1');
+  }
+  assert.strictEqual(n, 0);
+});
+
+test('handleRemoveRequest: pedido malformado e tipo errado', async () => {
+  let n = 0;
+  const get = () => { n++; return FakeXhr; };
+  for (const d of [null, undefined, 'x', {}, pedidoRm({ source: 'outro' }), pedidoRm({ type: 'pin' })]) {
+    const r = await handleRemoveRequest(d, get);
     assert.strictEqual(r.ok, false);
     assert.strictEqual(r.error, 'pedido invalido');
   }

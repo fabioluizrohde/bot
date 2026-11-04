@@ -596,3 +596,38 @@ test('pinItem: err_code diferente de 0 e sem resposta no prazo', async () => {
   assert.strictEqual(r.reason, 'rede');
   assert.strictEqual(w.listeners.length, 0);
 });
+
+// ---------- removeItem (remover da sacola pela ponte) ----------
+
+test('removeItem: posta type remove com path e corpo exatos; sucesso vira {ok:true}', async () => {
+  const w = fakeWin();
+  const p = bag.removeItem(SID, 11, w);
+  assert.strictEqual(w.posted.length, 1);
+  const { msg } = w.posted[0];
+  assert.strictEqual(msg.type, 'remove');
+  assert.strictEqual(msg.path, `/webapi/v1/session/${SID}/items`);
+  assert.deepStrictEqual(msg.body, { item_ids: [11] });
+  w.answer({ source: 'sla-bridge', id: msg.id, ok: true, status: 200, text: '{"err_code":0,"err_msg":"sucesso","data":{}}' });
+  assert.deepStrictEqual(await p, { ok: true });
+  assert.strictEqual(w.listeners.length, 0);
+});
+
+test('removeItem: entradas inválidas são recusadas sem postar nada', async () => {
+  const w = fakeWin();
+  for (const e of [null, undefined, 0, -1, 1.5, '11', NaN, [11], { itemId: 11 }]) {
+    assert.deepStrictEqual(await bag.removeItem(SID, e, w), { ok: false, reason: 'recusado' });
+  }
+  assert.deepStrictEqual(await bag.removeItem('abc', 11, w), { ok: false, reason: 'recusado' });
+  assert.strictEqual(w.posted.length, 0);
+});
+
+test('removeItem: err_code diferente de 0 e sem resposta no prazo', async () => {
+  let w = fakeWin();
+  let p = bag.removeItem(SID, 2, w);
+  w.answer({ source: 'sla-bridge', id: w.posted[0].msg.id, ok: true, status: 200, text: '{"err_code":5}' });
+  assert.deepStrictEqual(await p, { ok: false, reason: 'http', detail: 'err_code 5' });
+  w = fakeWin();
+  const r = await bag.removeItem(SID, 2, w, { timeoutMs: 20 });
+  assert.strictEqual(r.reason, 'rede');
+  assert.strictEqual(w.listeners.length, 0);
+});

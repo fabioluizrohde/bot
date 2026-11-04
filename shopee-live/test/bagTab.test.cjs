@@ -355,3 +355,33 @@ test('renderBagTab: o botão "Mover" em breve deixou de existir', () => {
 test('AVISO_FIXAR_DESLIGADO existe e pinGuard usa as travas do showGuard', () => {
   assert.ok(/fixar|mover/i.test(bagTab.AVISO_PIN_DESLIGADO));
 });
+
+// ---------- Remover da sacola (✕ no canto, confirmação no próprio card) ----------
+
+test('renderBagTab: ✕ de remover em todo tile em estoque, menos no que está No ar', () => {
+  const itens = [card(1), card(2), card(3, { outOfStock: true }), card(4, { removed: true })];
+  const html = bagTab.renderBagTab(base({ itens, total: 4, noAr: 2 }));
+  assert.strictEqual(count(html, 'data-act="bag-rm"'), 1); // só o 1
+  assert.ok(/<span class="rm" data-act="bag-rm" data-item="1"[^>]*>/.test(html));
+  assert.ok(!/data-act="bag-rm" data-item="2"/.test(html)); // nunca o produto no ar
+});
+
+test('renderBagTab: aguardando confirmação, o ✕ do produto vira "Remover?" (só dele)', () => {
+  const itens = [card(1), card(2)];
+  const html = bagTab.renderBagTab(base({ itens, total: 2, confirmando: 1 }));
+  assert.strictEqual(count(html, 'Remover?'), 1);
+  assert.ok(/<span class="rm sim" data-act="bag-rm" data-item="1"[^>]*>Remover\?<\/span>/.test(html));
+  assert.ok(/<span class="rm" data-act="bag-rm" data-item="2"/.test(html));
+});
+
+test('renderBagTab: sem ✕ quando há pedido em andamento ou Mostrar/Mover desligado', () => {
+  const itens = [card(1)];
+  for (const extra of [{ fixando: true }, { trocando: true }, { desligado: true }, { pinDesligado: true }, { rmDesligado: true }]) {
+    const html = bagTab.renderBagTab(base({ itens, total: 1, ...extra }));
+    assert.strictEqual(count(html, 'data-act="bag-rm"'), 0, JSON.stringify(extra));
+  }
+});
+
+test('AVISO_RM_DESLIGADO existe', () => {
+  assert.ok(/remover/i.test(bagTab.AVISO_RM_DESLIGADO));
+});

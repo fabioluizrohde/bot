@@ -321,6 +321,10 @@
     .tile.noar{border-color:#ee4d2d}
     .tile .tag{position:absolute;left:0;right:0;bottom:0;background:#ee4d2d;color:#fff;font-size:11px;line-height:16px;text-align:center}
     .tile .tag .t2{display:none}
+    .tile .rm{display:none;position:absolute;top:2px;right:2px;min-width:18px;padding:0 4px;border-radius:4px;background:rgba(0,0,0,.65);color:#fff;font-size:12px;line-height:18px;text-align:center;cursor:pointer}
+    .tile:hover .rm{display:block}
+    .tile .rm:hover{background:#d32f2f}
+    .tile .rm.sim{display:block;background:#d32f2f;font-weight:bold}
     .tile .tag.off{display:none}
     .tile:hover .tag.off{display:block;background:#1a73e8}
     .tile:hover .tag.off .t2{display:inline}
