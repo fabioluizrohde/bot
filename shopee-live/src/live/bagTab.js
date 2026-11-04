@@ -1,4 +1,4 @@
-// Aba "Sacola" do painel: lista só de leitura, com busca, contador e atualização automática.
+// Área "Sacola" do painel: grade de fotos numeradas, com busca, contador, modo e atualização automática.
 (function (root) {
   const SLA = (root.SLA = root.SLA || {});
 
@@ -12,7 +12,7 @@
   const ERROS = { rede: 'sem conexão', http: 'a Shopee respondeu com erro', formato: 'resposta inesperada' };
 
   function initialState() {
-    return { status: 'idle', itens: [], total: 0, maxItems: 0, query: '', desatualizada: false, erro: '', falhas: 0 };
+    return { status: 'idle', itens: [], total: 0, maxItems: 0, query: '', desatualizada: false, erro: '', falhas: 0, modo: 'mostrar', noAr: null, trocando: false, aviso: '' };
   }
 
   function shouldPoll(s) {
@@ -59,15 +59,18 @@
     return [...fotosQueFalharam];
   }
 
-  function cardHtml(c, comErro) {
-    const apagado = c.outOfStock || c.removed ? ' apagado' : '';
+  function tileHtml(c, comErro, m) {
+    const desligado = c.outOfStock || c.removed;
+    const cls = ['tile'];
+    if (c.itemId === m.noAr) cls.push('noar');
+    if (desligado) cls.push('apagado');
+    if (m.trocando) cls.push('trocando');
     // Sem onerror embutido (a página pode bloquear): o painel esconde a foto que falhar.
     const foto = c.image && !comErro.has(c.image)
       ? `<img src="${esc(SLA.bag.imageUrl(c.image))}" alt="" crossorigin="anonymous" data-img="${esc(c.image)}">`
       : '';
-    const antes = c.priceBefore ? ` <s>${esc(c.priceBefore)}</s>` : '';
-    const aviso = c.removed ? ' <span class="mut">(removido)</span>' : c.outOfStock ? ' <span class="mut">(esgotado)</span>' : '';
-    return `<div class="cartao${apagado}"><span class="num">${esc(c.n)}</span>${foto}<div class="info"><div class="nome">${esc(c.name)}${aviso}</div><div class="preco">${esc(c.price)}${antes}</div></div></div>`;
+    const off = desligado || m.trocando ? ' disabled' : '';
+    return `<button class="${cls.join(' ')}" data-act="bag-tile" data-n="${esc(c.n)}" title="${esc(c.name)} — ${esc(c.price)}"${off}>${foto}<span class="tn">${esc(c.n)}</span></button>`;
   }
 
   function renderBagTab(m) {
@@ -75,7 +78,10 @@
     const soMensagem = !m.itens.length && (m.status === 'erro' || m.status === 'sem_sessao');
     const contador = m.maxItems ? `${m.total} de ${m.maxItems}` : `${m.total}`;
     let h = `<div class="row">${soMensagem ? '' : `<b>${esc(contador)}</b>`}<button data-act="bag-refresh">Atualizar</button></div>`;
+    const modo = m.modo || 'mostrar';
     h += `<input class="busca" data-act="bag-q" data-focus-key="bag-q" placeholder="Buscar por nome ou número" value="${esc(m.query || '')}">`;
+    h += `<div class="modos"><button${modo === 'mostrar' ? ' class="on"' : ''} data-act="bag-modo" data-modo="mostrar">Mostrar</button><button data-act="bag-modo" data-modo="mover" disabled title="em breve">Mover</button></div>`;
+    if (m.aviso) h += `<p class="warn">${esc(m.aviso)}</p>`;
     if (m.status === 'sem_sessao') return h + '<p class="warn">Abra a página da live (sem sessão na URL).</p>';
     if (m.desatualizada && !soMensagem) h += '<p class="warn">Lista desatualizada</p>';
     if (m.status === 'erro') h += `<p class="warn">Não consegui ler a sacola (${esc(m.erro)}).</p>`;
@@ -87,7 +93,7 @@
     const lista = SLA.bag.filterBag(m.itens, m.query);
     if (!lista.length) return h + '<p class="mut">Nenhum produto encontrado.</p>';
     const comErro = new Set(m.fotosComErro || []);
-    return h + lista.map((c) => cardHtml(c, comErro)).join('');
+    return h + `<div class="grade">${lista.map((c) => tileHtml(c, comErro, m)).join('')}</div>`;
   }
 
   // ---- efeitos (sem teste automático) ----
@@ -137,9 +143,12 @@
 
     function render() { return renderBagTab({ ...state, fotosComErro: fotosQueFalharam }); }
 
-    SLA.panel.registerTab('sacola', 'Sacola', render, {
+    const registrar = SLA.panel.registerArea || SLA.panel.registerTab;
+    registrar('sacola', render, {
       actions: {
         'bag-q': (el) => { state = { ...state, query: el.value }; SLA.panel.redraw(); },
+        'bag-tile': () => {}, // a Task 8 liga o Mostrar
+        'bag-modo': () => {}, // só "mostrar" existe por enquanto
         'bag-refresh': (el, ev) => {
           if (ev && ev.type && ev.type !== 'click') return;
           state = { ...state, falhas: 0 };
@@ -151,7 +160,7 @@
         if (!ativa) return;
         if (Date.now() - ultimaLeitura > FRESCO_MS) ler();
         timer = setInterval(() => {
-          if (shouldPoll({ ativa: SLA.panel.isTabActive('sacola'), escondida: document.hidden, falhas: state.falhas })) ler();
+          if (shouldPoll({ ativa: (SLA.panel.isAreaVisible || SLA.panel.isTabActive)('sacola'), escondida: document.hidden, falhas: state.falhas })) ler();
         }, POLL_MS);
       },
     });

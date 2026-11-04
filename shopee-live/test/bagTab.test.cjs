@@ -12,11 +12,14 @@ const base = (extra) => ({
 });
 const count = (html, s) => html.split(s).length - 1;
 
-test('renderBagTab: 100 itens mostram contador e 100 cartões', () => {
+test('renderBagTab: 100 itens mostram contador e 100 tiles', () => {
   const itens = Array.from({ length: 100 }, (_, i) => card(i + 1));
   const html = bagTab.renderBagTab(base({ itens, total: 100 }));
   assert.ok(html.includes('100 de 100'));
-  assert.strictEqual(count(html, 'class="cartao'), 100);
+  assert.strictEqual(count(html, 'data-act="bag-tile"'), 100);
+  assert.strictEqual(count(html, '<div class="grade">'), 1);
+  assert.ok(html.includes('<span class="tn">1</span>') && html.includes('<span class="tn">100</span>'));
+  assert.ok(html.includes('title="Produto 7 — R$10,00"') && html.includes('data-n="7"'));
   assert.ok(html.includes('data-act="bag-q"') && html.includes('data-focus-key="bag-q"'));
   assert.ok(html.includes('data-act="bag-refresh"'));
 });
@@ -27,6 +30,7 @@ test('renderBagTab: texto da Shopee é escapado', () => {
   assert.ok(!html.includes('<script>'));
   assert.ok(html.includes('&lt;script&gt;'));
   assert.ok(!html.includes('<u>'));
+  assert.ok(html.includes('title="&lt;script&gt;alert(1)&lt;/script&gt; &amp; &quot;aspas&quot; — &lt;u&gt;x&lt;/u&gt;"'));
 });
 
 test('renderBagTab: busca digitada volta no value, escapada', () => {
@@ -50,12 +54,38 @@ test('renderBagTab: busca sem resultado', () => {
   assert.ok(html.includes('Nenhum produto encontrado.'));
 });
 
-test('renderBagTab: item esgotado/removido fica apagado; foto some se falhar', () => {
+test('renderBagTab: item esgotado/removido fica apagado e desligado; sem onerror', () => {
   const html = bagTab.renderBagTab(base({ itens: [card(1, { outOfStock: true }), card(2, { removed: true }), card(3)], total: 3 }));
   assert.strictEqual(count(html, 'apagado'), 2);
+  assert.strictEqual(count(html, ' disabled'), 3); // 2 tiles + botão "mover"
   assert.ok(!html.includes('onerror')); // sem código embutido: a página pode bloquear (CSP)
   assert.ok(html.includes('data-img="img-1"'));
-  assert.ok(html.includes('img-1'));
+});
+
+test('renderBagTab: modo padrão é mostrar; mover vem desligado', () => {
+  const html = bagTab.renderBagTab(base({ itens: [card(1)], total: 1 }));
+  assert.ok(/<button class="on"[^>]*data-modo="mostrar"|<button[^>]*data-modo="mostrar"[^>]*class="on"/.test(html) || /class="on"[^>]*data-act="bag-modo"[^>]*data-modo="mostrar"/.test(html));
+  const mover = html.match(/<button[^>]*data-modo="mover"[^>]*>/)[0];
+  assert.ok(mover.includes('disabled') && mover.includes('title="em breve"') && !mover.includes('on"'));
+  const m2 = bagTab.renderBagTab(base({ itens: [card(1)], total: 1, modo: 'mover' }));
+  assert.ok(/<button[^>]*data-modo="mover"[^>]*disabled/.test(m2));
+});
+
+test('renderBagTab: noAr marca só o tile certo', () => {
+  const html = bagTab.renderBagTab(base({ itens: [card(1), card(2), card(3)], total: 3, noAr: 2 }));
+  assert.strictEqual(count(html, 'noar'), 1);
+  assert.ok(/class="tile noar"[^>]*data-n="2"/.test(html));
+});
+
+test('renderBagTab: trocando desliga todos os tiles', () => {
+  const html = bagTab.renderBagTab(base({ itens: [card(1), card(2)], total: 2, trocando: true }));
+  assert.strictEqual(count(html, 'trocando'), 2);
+  assert.strictEqual((html.match(/<button class="tile[^>]*disabled/g) || []).length, 2);
+});
+
+test('renderBagTab: aviso aparece em <p class="warn">', () => {
+  const html = bagTab.renderBagTab(base({ itens: [card(1)], total: 1, aviso: 'Falhou <b>' }));
+  assert.ok(html.includes('<p class="warn">Falhou &lt;b&gt;</p>'));
 });
 
 // Conferido na live real em 2026-11-03: o servidor de fotos (cf.shopee.com.br) recusa o carregamento
@@ -64,11 +94,6 @@ test('renderBagTab: toda foto pede o modo CORS (crossorigin="anonymous")', () =>
   const html = bagTab.renderBagTab(base({ itens: [card(1), card(2)], total: 2 }));
   assert.strictEqual(count(html, '<img'), 2);
   assert.strictEqual(count(html, 'crossorigin="anonymous"'), 2);
-});
-
-test('renderBagTab: preço antigo riscado', () => {
-  const html = bagTab.renderBagTab(base({ itens: [card(1, { priceBefore: 'R$20,00' })], total: 1 }));
-  assert.ok(html.includes('<s>R$20,00</s>'));
 });
 
 test('renderBagTab: desatualizada, carregando e erro', () => {

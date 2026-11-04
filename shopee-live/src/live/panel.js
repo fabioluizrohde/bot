@@ -296,12 +296,18 @@
     button:disabled{opacity:.5;cursor:default}
     label{display:block;margin:4px 0}
     .busca{box-sizing:border-box;width:100%;margin:6px 0;padding:4px 6px;font:inherit}
-    .cartao{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid #eee}
-    .cartao .num{font-size:20px;font-weight:bold;min-width:32px;text-align:center;color:#ee4d2d}
-    .cartao img{width:40px;height:40px;object-fit:cover;border-radius:4px}
-    .cartao .info{min-width:0}
-    .cartao .nome{overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
-    .cartao .preco s{color:#999;margin-left:4px}
+    .grade{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:6px}
+    .tile{position:relative;aspect-ratio:1;padding:0;border:2px solid transparent;border-radius:6px;background:#eee;overflow:hidden;cursor:pointer}
+    .tile img{width:100%;height:100%;object-fit:cover;display:block}
+    .tile .tn{position:absolute;top:2px;left:2px;min-width:18px;padding:0 4px;border-radius:4px;background:rgba(0,0,0,.65);color:#fff;font-size:12px;font-weight:bold;line-height:18px;text-align:center}
+    .tile.noar{border-color:#ee4d2d}
+    .tile.noar::after{content:"No ar";position:absolute;left:0;right:0;bottom:0;background:#ee4d2d;color:#fff;font-size:11px;line-height:16px;text-align:center}
+    .tile.apagado{opacity:.45;cursor:default}
+    .tile.trocando{opacity:.6}
+    .modos{display:flex;gap:6px;margin:6px 0}
+    .modos button{flex:1;border:1px solid #ccc;border-radius:4px;background:#fff}
+    .modos button.on{background:#ee4d2d;border-color:#ee4d2d;color:#fff}
+    .modos button:disabled{background:#f3f3f3;color:#999}
     .apagado{opacity:.45}
   `;
 
