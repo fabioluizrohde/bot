@@ -1,0 +1,11 @@
+{
+  "name": "shopee-live-assistente",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "Extensão de navegador que auxilia o apresentador em lives de vendas da Shopee Brasil.",
+  "scripts": {
+    "test": "node --test test/*.test.cjs",
+    "test:e2e": "node test/e2e.cjs"
+  }
+}
