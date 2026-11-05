@@ -57,7 +57,8 @@ test('renderBagTab: busca sem resultado', () => {
 test('renderBagTab: item esgotado/removido fica apagado e desligado; sem onerror', () => {
   const html = bagTab.renderBagTab(base({ itens: [card(1, { outOfStock: true }), card(2, { removed: true }), card(3)], total: 3 }));
   assert.strictEqual(count(html, 'apagado'), 2);
-  assert.strictEqual(count(html, ' disabled'), 2); // só os 2 tiles
+  assert.strictEqual(count(html, ' disabled'), 0); // sem disabled: ele bloquearia o clique no ✕ de remover
+  assert.strictEqual(count(html, 'aria-disabled="true"'), 2); // os 2 tiles
   assert.ok(!html.includes('onerror')); // sem código embutido: a página pode bloquear (CSP)
   assert.ok(html.includes('data-img="img-1"'));
 });
@@ -358,11 +359,13 @@ test('AVISO_FIXAR_DESLIGADO existe e pinGuard usa as travas do showGuard', () =>
 
 // ---------- Remover da sacola (✕ no canto, confirmação no próprio card) ----------
 
-test('renderBagTab: ✕ de remover em todo tile em estoque, menos no que está No ar', () => {
+test('renderBagTab: ✕ de remover em todo tile (inclusive esgotado e removido), menos no que está No ar', () => {
   const itens = [card(1), card(2), card(3, { outOfStock: true }), card(4, { removed: true })];
   const html = bagTab.renderBagTab(base({ itens, total: 4, noAr: 2 }));
-  assert.strictEqual(count(html, 'data-act="bag-rm"'), 1); // só o 1
+  assert.strictEqual(count(html, 'data-act="bag-rm"'), 3); // 1, 3 (esgotado) e 4 (removido)
   assert.ok(/<span class="rm" data-act="bag-rm" data-item="1"[^>]*>/.test(html));
+  assert.ok(/<span class="rm" data-act="bag-rm" data-item="3"[^>]*>/.test(html));
+  assert.ok(/<span class="rm" data-act="bag-rm" data-item="4"[^>]*>/.test(html));
   assert.ok(!/data-act="bag-rm" data-item="2"/.test(html)); // nunca o produto no ar
 });
 

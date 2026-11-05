@@ -1,6 +1,6 @@
 # Assistente de Live Shopee (extensão de navegador)
 
-Versão 0.4.0. Ajuda quem apresenta lives da Shopee Brasil a transformar **IDs de produto pedidos no chat** (como `CLH-NZK-QPT`) em produtos na sacola da live, sem digitar nada, e a **colocar um produto no ar com um clique na foto dele**.
+Versão 0.5.0. Ajuda quem apresenta lives da Shopee Brasil a transformar **IDs de produto pedidos no chat** (como `CLH-NZK-QPT`) em produtos na sacola da live, sem digitar nada, e a **colocar um produto no ar com um clique na foto dele**.
 
 ## O que ela faz hoje
 
@@ -45,7 +45,7 @@ Acima da grade há o seletor de modo (**Mostrar**).
 
 **Mover p/ cima:** o produto marcado **No ar** tem uma etiqueta vermelha embaixo da foto. Ao passar o mouse, ela vira **Mover p/ cima**; um clique fixa o produto no topo da lista da live (é o mesmo pedido do botão nativo da Shopee, `POST items/pin`, um produto por vez). Só funciona com clique real, um pedido por vez, e 2 erros seguidos desligam o Mover até recarregar a página.
 
-**Remover da sacola:** ao passar o mouse num card aparece um **✕** no canto superior direito. O 1º clique troca o ✕ por **Remover?** (some sozinho em 4 segundos); o 2º clique remove (`DELETE items`, um produto por vez). O produto que está **No ar** nunca tem o ✕. Só com clique real, e 2 erros seguidos desligam o Remover até recarregar a página. Para desfazer, adicione o produto de novo pela tela da Shopee.
+**Remover da sacola:** ao passar o mouse num card aparece um **✕** no canto superior direito. O 1º clique troca o ✕ por **Remover?** (some sozinho em 4 segundos); o 2º clique remove (`DELETE items`, um produto por vez). O produto que está **No ar** nunca tem o ✕. Produtos esgotados ou removidos também têm o ✕ (é justamente o que costuma precisar sair). Só com clique real, e 2 erros seguidos desligam o Remover até recarregar a página. Para desfazer, adicione o produto de novo pela tela da Shopee.
 
 No modo Mostrar, **um clique numa foto coloca aquele produto no ar**. Regras de segurança:
 
@@ -108,6 +108,7 @@ No **⚙** do cabeçalho do painel: **Abrir a Shopee em** aba (padrão) ou janel
 
 ## O que a extensão nunca faz sozinha
 
+- **Sacola com menos vagas que o lote:** a extensão adiciona só o que cabe (na ordem do lote), deixa o resto no lote e mostra um aviso "Atenção: a sacola só tinha N vagas..." no painel (o Lote abre sozinho). Sem nenhuma vaga, nada é enviado e o aviso diz isso. Depois de abrir espaço (por exemplo removendo esgotados), clique em **Adicionar à sacola** para os que ficaram.
 - Na tela da Shopee, nunca clica em **Remover** (o remover da extensão é só pela grade da Sacola, veja abaixo). A adição à sacola é feita só com os produtos do seu lote, por uma chamada interna restrita (`PUT add_items`, até 20 produtos por pedido); o Confirmar da Shopee deixou de ser necessário.
 - Só coloca um produto no ar (**Mostrar**) quando **você clica numa foto**: um pedido por clique seu, nunca automático.
 - Não responde no chat e não mexe em cupons.
