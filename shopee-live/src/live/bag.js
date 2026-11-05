@@ -312,13 +312,16 @@
       const wait = o.wait || ((ms) => new Promise((res) => setTimeout(res, ms)));
       const pausa = o.pausaMs == null ? PAUSA_REMOVER_MS : o.pausaMs;
       const removidos = [];
+      const pulados = [];
       for (let i = 0; i < itemIds.length; i++) {
-        if (i > 0) await wait(pausa);
+        // Conferência de última hora de quem chama (ex.: virou protegido durante o lote): esse produto não é enviado.
+        if (typeof o.pular === 'function' && o.pular(itemIds[i])) { pulados.push(itemIds[i]); continue; }
+        if (removidos.length) await wait(pausa);
         const r = await removeItem(sessionId, itemIds[i], w, { timeoutMs });
-        if (!r.ok) return { ok: false, removidos, falhou: { itemId: itemIds[i], reason: r.reason, ...(r.detail ? { detail: r.detail } : {}) } };
+        if (!r.ok) return { ok: false, removidos, ...(pulados.length ? { pulados } : {}), falhou: { itemId: itemIds[i], reason: r.reason, ...(r.detail ? { detail: r.detail } : {}) } };
         removidos.push(itemIds[i]);
       }
-      return { ok: true, removidos, falhou: null };
+      return { ok: true, removidos, ...(pulados.length ? { pulados } : {}), falhou: null };
     } catch (e) {
       return { ok: false, removidos: [], falhou: { itemId: null, reason: 'rede', detail: String((e && e.message) || e) } };
     }

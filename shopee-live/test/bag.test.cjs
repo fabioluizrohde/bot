@@ -701,3 +701,15 @@ test('removeItems: entradas inválidas são recusadas sem postar nada', async ()
 test('REMOVE_MAX é 20', () => {
   assert.strictEqual(bag.REMOVE_MAX, 20);
 });
+
+test('I4: removeItems pula o que a conferência de última hora barra (protegido/No ar) e não posta esse', async () => {
+  const w = winQueRespondeCom([OK, OK]);
+  const consultados = [];
+  const r = await bag.removeItems(SID, [11, 22, 33], w, {
+    wait: async () => {},
+    pular: (id) => { consultados.push(id); return id === 22; },
+  });
+  assert.deepStrictEqual(consultados, [11, 22, 33]);
+  assert.deepStrictEqual(w.posted.map((p) => p.msg.body), [{ item_ids: [11] }, { item_ids: [33] }]);
+  assert.deepStrictEqual(r, { ok: true, removidos: [11, 33], pulados: [22], falhou: null });
+});

@@ -495,3 +495,37 @@ test('clearForNewSession e noSessionState zeram a prévia, o modo e o pedido em 
     assert.strictEqual(s.fixando, false);
   }
 });
+
+// ---------- Correções da revisão final ----------
+
+test('C1: voltar à mesma live depois de zerar o estado recarrega a proteção (idProtecao zera junto)', () => {
+  const sujo = { ...bagTab.initialState(), idProtecao: '777', protegidos: [1, 2] };
+  for (const s of [bagTab.clearForNewSession(sujo), bagTab.noSessionState(sujo)]) {
+    assert.deepStrictEqual(s.protegidos, []);
+    assert.strictEqual(s.idProtecao, null); // sem isso, garantirProtecao(777) sairia cedo e a lista ficaria vazia
+  }
+  assert.strictEqual(bagTab.initialState().idProtecao, null);
+});
+
+test('I3: protecaoDaLeitura: falha ao ler o armazenamento não decide nada (e não grava)', () => {
+  assert.strictEqual(bagTab.protecaoDaLeitura({ falhou: true }, [card(1)]), null);
+  const nova = bagTab.protecaoDaLeitura(null, [card(1), card(2)]);
+  assert.deepStrictEqual(nova, { r: { iniciado: true, protegidos: [1, 2] }, gravar: true });
+  const salvo = { iniciado: true, protegidos: [2] };
+  const ja = bagTab.protecaoDaLeitura(salvo, [card(1), card(2)]);
+  assert.strictEqual(ja.r, salvo);
+  assert.strictEqual(ja.gravar, false);
+});
+
+test('I1: a prévia avisa quando a extensão não sabe qual produto está no ar', () => {
+  const itens = [card(1), card(2)];
+  const sem = bagTab.renderBagTab(base({ itens, total: 2, noAr: null, limpar: { aberto: true, n: 5, ids: [2], faltam: 4 } }));
+  assert.ok(/não sei qual produto está no ar/i.test(sem));
+  const com = bagTab.renderBagTab(base({ itens, total: 2, noAr: 1, limpar: { aberto: true, n: 5, ids: [2], faltam: 4 } }));
+  assert.ok(!/não sei qual produto está no ar/i.test(com));
+});
+
+test('I4: enquanto há remoção em andamento, os cards ficam desativados (nada de proteger ou mostrar no meio)', () => {
+  const html = bagTab.renderBagTab(base({ itens: [card(1), card(2)], total: 2, fixando: true }));
+  assert.strictEqual(count(html, ' disabled'), 2);
+});
