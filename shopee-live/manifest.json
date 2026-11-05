@@ -24,6 +24,7 @@
         "src/live/autoAdd.js",
         "src/live/layout.js",
         "src/live/showGuard.js",
+        "src/live/protect.js",
         "src/live/panel.js",
         "src/live/bagTab.js"
       ],
