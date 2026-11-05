@@ -8,8 +8,8 @@
 //    {items:[{shop_id,item_id}]} (até 20, inteiros positivos);
 //  - escrita (POST, XMLHttpRequest da página): fixar UM item no topo, em /session/<n>/items/pin, só com
 //    {items:[{item_id,shop_id}]} (exatamente 1, inteiros positivos);
-//  - escrita (DELETE, XMLHttpRequest da página): remover UM item da sacola, em /session/<n>/items, só com
-//    {item_ids:[<número>]} (exatamente 1, inteiro positivo).
+//  - escrita (DELETE, XMLHttpRequest da página): remover itens da sacola, em /session/<n>/items, só com
+//    {item_ids:[<números>]} (de 1 a 20, inteiros positivos, sem repetir).
 // Não copia nem inventa cabeçalhos de segurança (só Content-Type). Não depende de nenhum outro
 // arquivo da extensão.
 (function () {
@@ -169,20 +169,23 @@
     return xhrWrite('POST', data, getXhr);
   }
 
-  // ---- Escrita restrita: remover UM item da sacola (DELETE items) ----
+  // ---- Escrita restrita: remover itens da sacola (DELETE items) ----
   // Conferido na live real em 2026-11-04: é o que o botão nativo de remover da Shopee envia.
   const REMOVE_RE = /^\/webapi\/v1\/session\/\d+\/items$/;
+  const REMOVE_MAX_ITEMS = 20;
 
   function isAllowedRemovePath(path) {
     return typeof path === 'string' && REMOVE_RE.test(path);
   }
 
-  // O corpo só pode ter "item_ids" com EXATAMENTE 1 número inteiro positivo.
+  // O corpo só pode ter "item_ids": de 1 a 20 números inteiros positivos, sem repetir.
   function validateRemoveBody(body) {
     if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
     if (Object.keys(body).join() !== 'item_ids') return false;
     const ids = body.item_ids;
-    return Array.isArray(ids) && ids.length === 1 && idOk(ids[0]);
+    if (!Array.isArray(ids) || ids.length < 1 || ids.length > REMOVE_MAX_ITEMS) return false;
+    if (!ids.every(idOk)) return false;
+    return new Set(ids).size === ids.length;
   }
 
   function handleRemoveRequest(data, getXhr) {
