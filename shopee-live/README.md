@@ -1,6 +1,6 @@
 # Assistente de Live Shopee (extensão de navegador)
 
-Versão 0.4.0. Ajuda quem apresenta lives da Shopee Brasil a transformar **IDs de produto pedidos no chat** (como `CLH-NZK-QPT`) em produtos na sacola da live, sem digitar nada, e a **colocar um produto no ar com um clique na foto dele**.
+Versão 0.5.0. Ajuda quem apresenta lives da Shopee Brasil a transformar **IDs de produto pedidos no chat** (como `CLH-NZK-QPT`) em produtos na sacola da live, sem digitar nada, e a **colocar um produto no ar com um clique na foto dele**.
 
 ## O que ela faz hoje
 
