@@ -332,6 +332,12 @@
     .tile .tag[data-act]:hover{background:#1a73e8}
     .tile .tag[data-act]:hover .t1{display:none}
     .tile .tag[data-act]:hover .t2{display:inline}
+    .tile .lock{position:absolute;left:2px;bottom:2px;font-size:13px;line-height:16px;text-shadow:0 0 2px #fff}
+    .tile.previa{border-color:#d32f2f;box-shadow:inset 0 0 0 3px #d32f2f}
+    .tile.previa img{filter:saturate(.4) brightness(.8)}
+    .limpar{margin:6px 0}
+    .limpar button{border:1px solid #ccc;border-radius:4px;background:#fff;margin-right:4px;cursor:pointer}
+    .limpar button.on,.limpar button.pri{background:#d32f2f;border-color:#d32f2f;color:#fff}
     .tile.apagado{opacity:.45;cursor:default}
     .tile.trocando{opacity:.6}
     .tile.desligado{opacity:.45;filter:grayscale(1);cursor:not-allowed}

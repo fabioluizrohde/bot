@@ -94,6 +94,10 @@
     if (semEstoque) cls.push('apagado');
     if (m.trocando) cls.push('trocando');
     if (m.desligado) cls.push('desligado'); // Mostrar desligado nesta live após 2 erros
+    const protegido = SLA.protect ? SLA.protect.isProtected(m.protegidos, c.itemId) : false;
+    const modoProteger = m.modo === 'proteger';
+    const naPrevia = !!(m.limpar && Array.isArray(m.limpar.ids) && c.itemId != null && m.limpar.ids.some((id) => String(id) === String(c.itemId)));
+    if (naPrevia) cls.push('previa');
     // Sem onerror embutido (a página pode bloquear): o painel esconde a foto que falhar.
     const foto = c.image && !comErro.has(c.image)
       ? `<img src="${esc(SLA.bag.imageUrl(c.image))}" alt="" crossorigin="anonymous" data-img="${esc(c.image)}">`
@@ -104,10 +108,11 @@
     const noAr = cls.includes('noar');
     // Etiqueta embaixo da foto: no produto "No ar" mostra "No ar"; ao passar o mouse (e nos outros produtos,
     // só no hover) vira "Mover p/ cima" (clicável). Sem o botão enquanto há pedido em andamento ou produto esgotado.
-    const podeMover = !semEstoque && !m.fixando && !m.trocando && !m.desligado && !m.pinDesligado;
+    const podeMover = !modoProteger && !semEstoque && !m.fixando && !m.trocando && !m.desligado && !m.pinDesligado;
     // ✕ de remover (canto superior direito): nunca no produto No ar; pede confirmação no próprio card.
     const livre = !m.fixando && !m.trocando && !m.desligado && !m.pinDesligado;
-    const podeRemover = livre && !noAr && !m.rmDesligado; // esgotado e removido também podem sair da sacola
+    // Protegido não tem ✕ (precisa desproteger antes); no modo Proteger também não há ✕.
+    const podeRemover = livre && !noAr && !m.rmDesligado && !protegido && !modoProteger; // esgotado e removido também podem sair
     const confirmando = podeRemover && m.confirmando != null && String(m.confirmando) === String(c.itemId);
     const botaoRm = podeRemover
       ? (confirmando
@@ -121,7 +126,31 @@
       etiqueta = '<span class="tag"><span class="t1">No ar</span></span>';
     }
     const titulo = `${esc(c.name)} — ${esc(c.price)}${c.priceBefore ? ` (antes ${esc(c.priceBefore)})` : ''}${m.desligado ? ' · Mostrar desligado nesta live' : ''}`;
-    return `<button class="${cls.join(' ')}" data-act="bag-tile" data-n="${esc(c.n)}" data-item="${item}" title="${titulo}"${off}>${foto}<span class="tn">${esc(c.n)}</span>${etiqueta}${botaoRm}</button>`;
+    const cadeado = protegido ? '<span class="lock" title="Protegido">🔒</span>' : '';
+    const acao = modoProteger ? 'bag-protect' : 'bag-tile';
+    return `<button class="${cls.join(' ')}" data-act="${acao}" data-n="${esc(c.n)}" data-item="${item}" title="${titulo}"${off}>${foto}<span class="tn">${esc(c.n)}</span>${cadeado}${etiqueta}${botaoRm}</button>`;
+  }
+
+  // Botão Limpar (remover em lote), opções 5/10/15/20 e prévia com Confirmar/Cancelar.
+  function limparHtml(m) {
+    if (m.fixando || m.trocando || m.desligado || m.rmDesligado) return '';
+    const l = m.limpar;
+    if (!l || !l.aberto) return '<div class="limpar"><button data-act="bag-limpar">Limpar</button></div>';
+    const limites = (SLA.protect && SLA.protect.LIMITES) || [5, 10, 15, 20];
+    let h = '<div class="limpar"><b>Remover os últimos:</b> ';
+    h += limites.map((n) => `<button${l.n === n ? ' class="on"' : ''} data-act="bag-limpar-n" data-n="${n}">${n}</button>`).join('');
+    h += ' <button data-act="bag-limpar-cancel">Cancelar</button>';
+    if (l.n) {
+      const k = (l.ids || []).length;
+      if (!k) {
+        h += '<p class="warn">Nenhum produto pode ser removido (os protegidos e o que está No ar ficam).</p>';
+      } else {
+        h += `<p class="warn">${k} ${k === 1 ? 'produto será removido' : 'produtos serão removidos'} (destacados em vermelho abaixo).</p>`;
+        if (l.faltam > 0) h += `<p class="mut">Só há ${k} ${k === 1 ? 'produto que pode' : 'produtos que podem'} ser removido${k === 1 ? '' : 's'}.</p>`;
+        h += `<button class="pri" data-act="bag-limpar-ok">Confirmar remoção de ${k}</button>`;
+      }
+    }
+    return h + '</div>';
   }
 
   function renderBagTab(m) {
@@ -131,7 +160,7 @@
     let h = `<div class="row">${soMensagem ? '' : `<b>${esc(contador)}</b>`}<button data-act="bag-refresh">Atualizar</button></div>`;
     const modo = m.modo || 'mostrar';
     h += `<input class="busca" data-act="bag-q" data-focus-key="bag-q" placeholder="Buscar por nome ou número" value="${esc(m.query || '')}">`;
-    h += `<div class="modos"><button${modo === 'mostrar' ? ' class="on"' : ''} data-act="bag-modo" data-modo="mostrar">Mostrar</button></div>`;
+    h += `<div class="modos"><button${modo === 'mostrar' ? ' class="on"' : ''} data-act="bag-modo" data-modo="mostrar">Mostrar</button><button${modo === 'proteger' ? ' class="on"' : ''} data-act="bag-modo" data-modo="proteger">Proteger</button></div>`;
     if (m.aviso) h += `<p class="warn">${esc(m.aviso)}</p>`;
     if (m.status === 'sem_sessao') return h + '<p class="warn">Abra a página da live (sem sessão na URL).</p>';
     if (m.desatualizada && !soMensagem) h += '<p class="warn">Lista desatualizada</p>';
@@ -144,6 +173,7 @@
     const lista = SLA.bag.filterBag(m.itens, m.query);
     if (!lista.length) return h + '<p class="mut">Nenhum produto encontrado.</p>';
     const comErro = new Set(m.fotosComErro || []);
+    h += limparHtml(m);
     return h + `<div class="grade">${lista.map((c) => tileHtml(c, comErro, m)).join('')}</div>`;
   }
 
