@@ -1,6 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 require('../src/live/bag.js');
+require('../src/live/protect.js');
 const bagTab = require('../src/live/bagTab.js');
 
 const card = (n, extra) => ({
@@ -387,4 +388,144 @@ test('renderBagTab: sem ✕ quando há pedido em andamento ou Mostrar/Mover desl
 
 test('AVISO_RM_DESLIGADO existe', () => {
   assert.ok(/remover/i.test(bagTab.AVISO_RM_DESLIGADO));
+});
+
+// ---------- Proteger (🔒), modo Proteger e Limpar em lote (desenho) ----------
+
+test('renderBagTab: card protegido tem 🔒 e não tem ✕; os outros têm ✕', () => {
+  const itens = [card(1), card(2), card(3)];
+  const html = bagTab.renderBagTab(base({ itens, total: 3, protegidos: [2] }));
+  assert.strictEqual(count(html, 'class="lock"'), 1);
+  assert.ok(/data-item="2"[^>]*>[\s\S]*?class="lock"/.test(html));
+  assert.ok(!/data-act="bag-rm" data-item="2"/.test(html));
+  assert.ok(/data-act="bag-rm" data-item="1"/.test(html) && /data-act="bag-rm" data-item="3"/.test(html));
+});
+
+test('renderBagTab: modo proteger troca a ação do tile e esconde Mover e ✕', () => {
+  const itens = [card(1), card(2)];
+  const html = bagTab.renderBagTab(base({ itens, total: 2, modo: 'proteger', protegidos: [1] }));
+  assert.strictEqual(count(html, 'data-act="bag-protect"'), 2);
+  assert.strictEqual(count(html, 'data-act="bag-tile"'), 0);
+  assert.strictEqual(count(html, 'data-act="bag-pin"'), 0);
+  assert.strictEqual(count(html, 'data-act="bag-rm"'), 0);
+  assert.ok(html.includes('<button class="on" data-act="bag-modo" data-modo="proteger">Proteger</button>'));
+  assert.ok(html.includes('<button data-act="bag-modo" data-modo="mostrar">Mostrar</button>'));
+  assert.strictEqual(count(html, 'class="lock"'), 1); // o 🔒 continua à vista
+});
+
+test('renderBagTab: botão Limpar fechado; aberto mostra 5, 10, 15 e 20', () => {
+  const itens = [card(1), card(2)];
+  const fechado = bagTab.renderBagTab(base({ itens, total: 2 }));
+  assert.strictEqual(count(fechado, 'data-act="bag-limpar"'), 1);
+  assert.strictEqual(count(fechado, 'data-act="bag-limpar-n"'), 0);
+  const aberto = bagTab.renderBagTab(base({ itens, total: 2, limpar: { aberto: true, n: null, ids: [], faltam: 0 } }));
+  for (const n of [5, 10, 15, 20]) assert.ok(aberto.includes(`data-act="bag-limpar-n" data-n="${n}"`), String(n));
+  assert.strictEqual(count(aberto, 'data-act="bag-limpar-ok"'), 0);
+});
+
+test('renderBagTab: prévia destaca só os cards da lista, avisa a falta e traz Confirmar e Cancelar', () => {
+  const itens = [card(1), card(2), card(3), card(4)];
+  const html = bagTab.renderBagTab(base({ itens, total: 4, limpar: { aberto: true, n: 10, ids: [3, 4], faltam: 8 } }));
+  assert.strictEqual(count(html, 'tile previa'), 2);
+  assert.ok(/data-n="3"/.test(html) && /class="tile previa[^"]*"[^>]*data-n="3"/.test(html));
+  assert.ok(/2 produtos serão removidos/.test(html));
+  assert.ok(/só há 2/i.test(html));
+  assert.ok(/data-act="bag-limpar-ok"[^>]*>[^<]*Confirmar remoção de 2/.test(html));
+  assert.strictEqual(count(html, 'data-act="bag-limpar-cancel"'), 1);
+  const um = bagTab.renderBagTab(base({ itens, total: 4, limpar: { aberto: true, n: 1, ids: [4], faltam: 0 } }));
+  assert.ok(/1 produto será removido/.test(um));
+  assert.ok(!/só há/i.test(um));
+});
+
+test('renderBagTab: sem nenhum removível avisa e não oferece Confirmar', () => {
+  const html = bagTab.renderBagTab(base({ itens: [card(1)], total: 1, protegidos: [1], limpar: { aberto: true, n: 5, ids: [], faltam: 5 } }));
+  assert.ok(/Nenhum produto pode ser removido/.test(html));
+  assert.strictEqual(count(html, 'data-act="bag-limpar-ok"'), 0);
+  assert.strictEqual(count(html, 'tile previa'), 0);
+});
+
+test('renderBagTab: ocupado ou Remover desligado esconde Limpar e Confirmar', () => {
+  const itens = [card(1)];
+  for (const extra of [{ fixando: true }, { trocando: true }, { desligado: true }, { rmDesligado: true }]) {
+    const html = bagTab.renderBagTab(base({ itens, total: 1, limpar: { aberto: true, n: 5, ids: [10], faltam: 4 }, ...extra }));
+    assert.strictEqual(count(html, 'data-act="bag-limpar'), 0, JSON.stringify(extra));
+  }
+});
+
+// ---------- Proteção por live e prévia do Limpar (funções puras) ----------
+
+test('storageKey: uma chave por live', () => {
+  assert.strictEqual(bagTab.storageKey('7911410'), 'sla-protect-7911410');
+  assert.notStrictEqual(bagTab.storageKey('1'), bagTab.storageKey('2'));
+});
+
+test('applyFirstRead: 1ª leitura protege o que já está na sacola; sacola vazia inicia sem ninguém; já iniciado não muda', () => {
+  assert.deepStrictEqual(bagTab.applyFirstRead(null, [card(1), card(2)]), { iniciado: true, protegidos: [1, 2] });
+  assert.deepStrictEqual(bagTab.applyFirstRead(undefined, []), { iniciado: true, protegidos: [] });
+  const salvo = { iniciado: true, protegidos: [2] };
+  assert.strictEqual(bagTab.applyFirstRead(salvo, [card(1), card(2), card(3)]), salvo);
+  // formato estragado no armazenamento vale como "não iniciado"
+  assert.deepStrictEqual(bagTab.applyFirstRead({ protegidos: 'x' }, [card(5)]), { iniciado: true, protegidos: [5] });
+});
+
+test('buildPreview: últimos N removíveis, sem protegidos nem o No ar', () => {
+  const itens = [card(1), card(2), card(3), card(4), card(5)];
+  assert.deepStrictEqual(bagTab.buildPreview(itens, [5], 4, 2), { aberto: true, n: 2, ids: [3, 2], faltam: 0 });
+  assert.deepStrictEqual(bagTab.buildPreview(itens, [1, 2, 3, 4, 5], null, 5), { aberto: true, n: 5, ids: [], faltam: 5 });
+});
+
+test('previewStillValid: só vale se nada mudou desde a prévia', () => {
+  const itens = [card(1), card(2), card(3)];
+  const prev = { aberto: true, n: 2, ids: [3, 2], faltam: 0 };
+  assert.strictEqual(bagTab.previewStillValid(prev, itens, [], null), true);
+  assert.strictEqual(bagTab.previewStillValid(prev, [card(1), card(2)], [], null), false); // um sumiu
+  assert.strictEqual(bagTab.previewStillValid(prev, itens, [3], null), false); // um virou protegido
+  assert.strictEqual(bagTab.previewStillValid(prev, itens, [], 2), false); // um virou o No ar
+  assert.strictEqual(bagTab.previewStillValid({ aberto: true, n: null, ids: [], faltam: 0 }, itens, [], null), true); // sem prévia: nada a invalidar
+  assert.strictEqual(bagTab.previewStillValid(null, itens, [], null), true);
+});
+
+test('clearForNewSession e noSessionState zeram a prévia, o modo e o pedido em andamento', () => {
+  const sujo = { ...bagTab.initialState(), limpar: { aberto: true, n: 5, ids: [1], faltam: 0 }, modo: 'proteger', protegidos: [1], confirmando: 3, fixando: true };
+  for (const s of [bagTab.clearForNewSession(sujo), bagTab.noSessionState(sujo)]) {
+    assert.strictEqual(s.limpar, null);
+    assert.strictEqual(s.modo, 'mostrar');
+    assert.deepStrictEqual(s.protegidos, []);
+    assert.strictEqual(s.confirmando, null);
+    assert.strictEqual(s.fixando, false);
+  }
+});
+
+// ---------- Correções da revisão final ----------
+
+test('C1: voltar à mesma live depois de zerar o estado recarrega a proteção (idProtecao zera junto)', () => {
+  const sujo = { ...bagTab.initialState(), idProtecao: '777', protegidos: [1, 2] };
+  for (const s of [bagTab.clearForNewSession(sujo), bagTab.noSessionState(sujo)]) {
+    assert.deepStrictEqual(s.protegidos, []);
+    assert.strictEqual(s.idProtecao, null); // sem isso, garantirProtecao(777) sairia cedo e a lista ficaria vazia
+  }
+  assert.strictEqual(bagTab.initialState().idProtecao, null);
+});
+
+test('I3: protecaoDaLeitura: falha ao ler o armazenamento não decide nada (e não grava)', () => {
+  assert.strictEqual(bagTab.protecaoDaLeitura({ falhou: true }, [card(1)]), null);
+  const nova = bagTab.protecaoDaLeitura(null, [card(1), card(2)]);
+  assert.deepStrictEqual(nova, { r: { iniciado: true, protegidos: [1, 2] }, gravar: true });
+  const salvo = { iniciado: true, protegidos: [2] };
+  const ja = bagTab.protecaoDaLeitura(salvo, [card(1), card(2)]);
+  assert.strictEqual(ja.r, salvo);
+  assert.strictEqual(ja.gravar, false);
+});
+
+test('I1: a prévia avisa quando a extensão não sabe qual produto está no ar', () => {
+  const itens = [card(1), card(2)];
+  const sem = bagTab.renderBagTab(base({ itens, total: 2, noAr: null, limpar: { aberto: true, n: 5, ids: [2], faltam: 4 } }));
+  assert.ok(/não sei qual produto está no ar/i.test(sem));
+  const com = bagTab.renderBagTab(base({ itens, total: 2, noAr: 1, limpar: { aberto: true, n: 5, ids: [2], faltam: 4 } }));
+  assert.ok(!/não sei qual produto está no ar/i.test(com));
+});
+
+test('I4: enquanto há remoção em andamento, os cards ficam desativados (nada de proteger ou mostrar no meio)', () => {
+  const html = bagTab.renderBagTab(base({ itens: [card(1), card(2)], total: 2, fixando: true }));
+  assert.strictEqual(count(html, ' disabled'), 2);
 });

@@ -338,9 +338,12 @@ test('isAllowedRemovePath: aceita só /session/<n>/items', () => {
   }
 });
 
-test('validateRemoveBody: só item_ids com exatamente 1 inteiro positivo', () => {
+test('validateRemoveBody: só item_ids com 1 a 20 inteiros positivos, sem repetir', () => {
   assert.strictEqual(validateRemoveBody(CORPO_RM), true);
-  const ruins = [null, undefined, 'x', [], {}, { item_ids: [] }, { item_ids: 'x' }, { item_ids: [1, 2] },
+  assert.strictEqual(validateRemoveBody({ item_ids: [1, 2, 3] }), true);
+  assert.strictEqual(validateRemoveBody({ item_ids: Array.from({ length: 20 }, (_, i) => i + 1) }), true);
+  const ruins = [null, undefined, 'x', [], {}, { item_ids: [] }, { item_ids: 'x' }, { item_ids: [1, 1] },
+    { item_ids: Array.from({ length: 21 }, (_, i) => i + 1) },
     { item_ids: [1], extra: 1 }, { item_ids: ['1'] }, { item_ids: [NaN] }, { item_ids: [1.5] }, { item_ids: [0] },
     { item_ids: [-1] }, { item_ids: [null] }, { items: [{ item_id: 1, shop_id: 2 }] }];
   for (const b of ruins) assert.strictEqual(validateRemoveBody(b), false, JSON.stringify(b));
@@ -363,7 +366,8 @@ test('handleRemoveRequest: caminho ou corpo recusado nunca chama getXhr', async 
   let n = 0;
   const get = () => { n++; return FakeXhr; };
   for (const d of [pedidoRm({ path: PIN }), pedidoRm({ path: SHOW }), pedidoRm({ path: 'https://evil.com/x' }),
-    pedidoRm({ body: {} }), pedidoRm({ body: null }), pedidoRm({ body: { item_ids: [1, 2] } })]) {
+    pedidoRm({ body: {} }), pedidoRm({ body: null }), pedidoRm({ body: { item_ids: [1, 1] } }),
+    pedidoRm({ body: { item_ids: Array.from({ length: 21 }, (_, i) => i + 1) } })]) {
     const r = await handleRemoveRequest(d, get);
     assert.strictEqual(r.ok, false);
     assert.strictEqual(r.error, 'pedido recusado');
@@ -381,4 +385,15 @@ test('handleRemoveRequest: pedido malformado e tipo errado', async () => {
     assert.strictEqual(r.error, 'pedido invalido');
   }
   assert.strictEqual(n, 0);
+});
+
+test('handleRemoveRequest: vários ids fazem um único DELETE com o corpo exato', async () => {
+  FakeXhr.modo = { status: 200, text: '{"err_code":0}' };
+  const corpo = { item_ids: [11, 22, 33] };
+  let n = 0;
+  const r = await handleRemoveRequest(pedidoRm({ body: corpo }), () => { n++; return FakeXhr; });
+  assert.strictEqual(n, 1);
+  assert.deepStrictEqual(FakeXhr.last.calls, [['open', 'DELETE', RM, true]]);
+  assert.strictEqual(FakeXhr.last.sent, JSON.stringify(corpo));
+  assert.strictEqual(r.ok, true);
 });

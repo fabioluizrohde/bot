@@ -631,3 +631,85 @@ test('removeItem: err_code diferente de 0 e sem resposta no prazo', async () => 
   assert.strictEqual(r.reason, 'rede');
   assert.strictEqual(w.listeners.length, 0);
 });
+
+// ---------- removeItems (remover vários itens pela ponte) ----------
+
+// Janela falsa que responde sozinha a cada pedido, na ordem, com os resultados dados.
+function winQueRespondeCom(respostas) {
+  const w = fakeWin();
+  const orig = w.postMessage;
+  let i = 0;
+  w.postMessage = (msg, origin) => {
+    orig.call(w, msg, origin);
+    const r = respostas[i++] || { ok: true, status: 200, text: '{"err_code":0}' };
+    setTimeout(() => w.answer({ source: 'sla-bridge', id: msg.id, ...r }), 0);
+  };
+  return w;
+}
+const OK = { ok: true, status: 200, text: '{"err_code":0,"err_msg":"sucesso","data":{}}' };
+const ERRO = { ok: true, status: 200, text: '{"err_code":5}' };
+
+test('removeItems um_a_um: um pedido por id, em ordem, com pausa entre eles', async () => {
+  const w = winQueRespondeCom([OK, OK, OK]);
+  const pausas = [];
+  const r = await bag.removeItems(SID, [11, 22, 33], w, { wait: async (ms) => { pausas.push(ms); } });
+  assert.deepStrictEqual(r, { ok: true, removidos: [11, 22, 33], falhou: null });
+  assert.deepStrictEqual(w.posted.map((p) => p.msg.body), [{ item_ids: [11] }, { item_ids: [22] }, { item_ids: [33] }]);
+  assert.ok(w.posted.every((p) => p.msg.type === 'remove' && p.msg.path === `/webapi/v1/session/${SID}/items`));
+  assert.deepStrictEqual(pausas, [300, 300]); // entre os pedidos, não depois do último
+});
+
+test('removeItems um_a_um: para no primeiro erro e diz qual falhou', async () => {
+  const w = winQueRespondeCom([OK, ERRO, OK]);
+  const r = await bag.removeItems(SID, [11, 22, 33], w, { wait: async () => {} });
+  assert.strictEqual(r.ok, false);
+  assert.deepStrictEqual(r.removidos, [11]);
+  assert.deepStrictEqual(r.falhou, { itemId: 22, reason: 'http', detail: 'err_code 5' });
+  assert.strictEqual(w.posted.length, 2); // o terceiro nunca foi enviado
+});
+
+test('removeItems junto: um único pedido com todos os ids', async () => {
+  const w = winQueRespondeCom([OK]);
+  const r = await bag.removeItems(SID, [11, 22, 33], w, { modo: 'junto' });
+  assert.deepStrictEqual(r, { ok: true, removidos: [11, 22, 33], falhou: null });
+  assert.strictEqual(w.posted.length, 1);
+  assert.deepStrictEqual(w.posted[0].msg.body, { item_ids: [11, 22, 33] });
+});
+
+test('removeItems junto: erro não remove nenhum', async () => {
+  const w = winQueRespondeCom([ERRO]);
+  const r = await bag.removeItems(SID, [11, 22], w, { modo: 'junto' });
+  assert.strictEqual(r.ok, false);
+  assert.deepStrictEqual(r.removidos, []);
+  assert.strictEqual(r.falhou.reason, 'http');
+});
+
+test('removeItems: entradas inválidas são recusadas sem postar nada', async () => {
+  const w = fakeWin();
+  const ruins = [null, undefined, 'x', [], [11, 11], [0], [-1], [1.5], ['11'], [NaN], Array.from({ length: 21 }, (_, i) => i + 1)];
+  for (const e of ruins) {
+    const r = await bag.removeItems(SID, e, w);
+    assert.strictEqual(r.ok, false);
+    assert.deepStrictEqual(r.removidos, []);
+    assert.strictEqual(r.falhou.reason, 'recusado');
+  }
+  const r2 = await bag.removeItems('abc', [11], w);
+  assert.strictEqual(r2.falhou.reason, 'recusado');
+  assert.strictEqual(w.posted.length, 0);
+});
+
+test('REMOVE_MAX é 20', () => {
+  assert.strictEqual(bag.REMOVE_MAX, 20);
+});
+
+test('I4: removeItems pula o que a conferência de última hora barra (protegido/No ar) e não posta esse', async () => {
+  const w = winQueRespondeCom([OK, OK]);
+  const consultados = [];
+  const r = await bag.removeItems(SID, [11, 22, 33], w, {
+    wait: async () => {},
+    pular: (id) => { consultados.push(id); return id === 22; },
+  });
+  assert.deepStrictEqual(consultados, [11, 22, 33]);
+  assert.deepStrictEqual(w.posted.map((p) => p.msg.body), [{ item_ids: [11] }, { item_ids: [33] }]);
+  assert.deepStrictEqual(r, { ok: true, removidos: [11, 33], pulados: [22], falhou: null });
+});

@@ -278,6 +278,55 @@
     }
   }
 
+  const REMOVE_MAX = 20;
+  const PAUSA_REMOVER_MS = 300;
+
+  // Remove de 1 a 20 produtos da sacola. opts.modo: 'um_a_um' (padrão: um pedido por produto, com pausa entre
+  // eles, parando no primeiro erro) ou 'junto' (um único pedido com todos). opts.wait/pausaMs: injetáveis (testes).
+  // Nunca lança nem rejeita. Resultado: { ok, removidos: [itemId], falhou: null | { itemId, reason, detail? } }.
+  // Atenção: 'rede' (inclusive tempo esgotado) NÃO prova que nada saiu: quem chama deve reler a sacola.
+  async function removeItems(sessionId, itemIds, win, opts) {
+    const recusa = { ok: false, removidos: [], falhou: { itemId: null, reason: 'recusado' } };
+    try {
+      if (typeof sessionId !== 'string' || !/^\d+$/.test(sessionId)
+        || !Array.isArray(itemIds) || itemIds.length < 1 || itemIds.length > REMOVE_MAX
+        || !itemIds.every((n) => typeof n === 'number' && Number.isSafeInteger(n) && n > 0)
+        || new Set(itemIds).size !== itemIds.length) {
+        return recusa;
+      }
+      const w = win || (typeof window !== 'undefined' ? window : null);
+      if (!w) return { ok: false, removidos: [], falhou: { itemId: null, reason: 'rede', detail: 'sem janela' } };
+      const o = opts || {};
+      const timeoutMs = o.timeoutMs || SHOW_TIMEOUT_MS;
+      if (o.modo === 'junto') {
+        let d;
+        try {
+          d = await bridgeRoundTrip(w, { type: 'remove', path: `/webapi/v1/session/${sessionId}/items`, body: { item_ids: itemIds.slice() } }, timeoutMs);
+        } catch (e) {
+          return { ok: false, removidos: [], falhou: { itemId: null, reason: 'rede', detail: String((e && e.message) || e) } };
+        }
+        const r = interpretWrite(d);
+        if (r.ok) return { ok: true, removidos: itemIds.slice(), falhou: null };
+        return { ok: false, removidos: [], falhou: { itemId: null, reason: r.reason, ...(r.detail ? { detail: r.detail } : {}) } };
+      }
+      const wait = o.wait || ((ms) => new Promise((res) => setTimeout(res, ms)));
+      const pausa = o.pausaMs == null ? PAUSA_REMOVER_MS : o.pausaMs;
+      const removidos = [];
+      const pulados = [];
+      for (let i = 0; i < itemIds.length; i++) {
+        // Conferência de última hora de quem chama (ex.: virou protegido durante o lote): esse produto não é enviado.
+        if (typeof o.pular === 'function' && o.pular(itemIds[i])) { pulados.push(itemIds[i]); continue; }
+        if (removidos.length) await wait(pausa);
+        const r = await removeItem(sessionId, itemIds[i], w, { timeoutMs });
+        if (!r.ok) return { ok: false, removidos, ...(pulados.length ? { pulados } : {}), falhou: { itemId: itemIds[i], reason: r.reason, ...(r.detail ? { detail: r.detail } : {}) } };
+        removidos.push(itemIds[i]);
+      }
+      return { ok: true, removidos, ...(pulados.length ? { pulados } : {}), falhou: null };
+    } catch (e) {
+      return { ok: false, removidos: [], falhou: { itemId: null, reason: 'rede', detail: String((e && e.message) || e) } };
+    }
+  }
+
   // Lê a sacola inteira (com paginação de segurança). Nunca lança: devolve { ok:false, reason }.
   async function readBag(sessionId, fetchFn) {
     // Sem fetch injetado: usa a ponte da página (resolvida na hora da chamada).
@@ -319,6 +368,6 @@
     }
   }
 
-  SLA.bag = { IMG_BASE, imageUrl, sessionIdFromHref, formatPrice, normalizeBag, filterBag, readBag, makeBridgeFetch, showItem, addItems, pinItem, removeItem, ADD_MAX_ITEMS, SHOW_TIMEOUT_MS };
+  SLA.bag = { IMG_BASE, imageUrl, sessionIdFromHref, formatPrice, normalizeBag, filterBag, readBag, makeBridgeFetch, showItem, addItems, pinItem, removeItem, removeItems, REMOVE_MAX, ADD_MAX_ITEMS, SHOW_TIMEOUT_MS };
   if (typeof module !== 'undefined' && module.exports) module.exports = SLA.bag;
 })(typeof window !== 'undefined' ? window : globalThis);

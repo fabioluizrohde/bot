@@ -1,6 +1,6 @@
 # Assistente de Live Shopee (extensão de navegador)
 
-Versão 0.5.0. Ajuda quem apresenta lives da Shopee Brasil a transformar **IDs de produto pedidos no chat** (como `CLH-NZK-QPT`) em produtos na sacola da live, sem digitar nada, e a **colocar um produto no ar com um clique na foto dele**.
+Versão 0.6.0. Ajuda quem apresenta lives da Shopee Brasil a transformar **IDs de produto pedidos no chat** (como `CLH-NZK-QPT`) em produtos na sacola da live, sem digitar nada, e a **colocar um produto no ar com um clique na foto dele**.
 
 ## O que ela faz hoje
 
@@ -47,6 +47,11 @@ Acima da grade há o seletor de modo (**Mostrar**).
 
 **Remover da sacola:** ao passar o mouse num card aparece um **✕** no canto superior direito. O 1º clique troca o ✕ por **Remover?** (some sozinho em 4 segundos); o 2º clique remove (`DELETE items`, um produto por vez). O produto que está **No ar** nunca tem o ✕. Produtos esgotados ou removidos também têm o ✕ (é justamente o que costuma precisar sair). Só com clique real, e 2 erros seguidos desligam o Remover até recarregar a página. Para desfazer, adicione o produto de novo pela tela da Shopee.
 
+**Proteger (🔒) e Limpar em lote:**
+- **Proteger:** na primeira leitura da sacola de cada live (ao abrir a página, mesmo sem abrir a aba Sacola), tudo o que já está nela fica protegido com um 🔒. O que o lote adicionar depois não fica protegido. Para marcar ou desmarcar à mão, use o modo **Proteger** (ao lado de Mostrar) e clique no card. A proteção fica guardada no navegador, por live, e sobrevive a recarregar a página. **Card protegido não tem ✕**: desproteja antes de remover.
+- **Limpar:** o botão **Limpar** (acima da grade) oferece **5, 10, 15 ou 20**. A grade destaca em vermelho os **últimos** N produtos da sacola (os de maior número), pulando os protegidos e o que está No ar, e mostra **Confirmar remoção de N**. Nada é enviado antes do Confirmar. A prévia some sozinha em 15 segundos, ou se a sacola mudar. Se houver menos produtos removíveis que N, a prévia usa só os que existem e avisa.
+- Por enquanto a remoção em lote manda **um pedido por produto** (com uma pausa curta entre eles) e para no primeiro erro, e depois relê a sacola para dizer quantos saíram de verdade. Mesmas travas do ✕: só clique real, e 2 erros seguidos desligam o Remover até recarregar a página.
+
 No modo Mostrar, **um clique numa foto coloca aquele produto no ar**. Regras de segurança:
 
 - **Só o seu clique de verdade conta.** Cliques simulados por programa são ignorados.
@@ -72,6 +77,7 @@ Em 2026-11-03 o fluxo do Lote foi testado numa live real e funcionou. Foram conf
 O que ainda precisa de você numa live real (recarregue a extensão em `chrome://extensions` e dê F5 na live):
 
 - [ ] **Adicionar sem clique (primeiro uso real):** comece com **1 ID** no chat. Confira que o produto entra na sacola sozinho (sem Produtos nem Confirmar), que o quadro mostra "1 adicionado" e que o Lote se limpa ao selecionar IDs novos. Depois teste com 3 IDs, e com um ID que já está na sacola (deve virar "já na sacola" sem duplicar).
+- [ ] **Proteger e Limpar em lote (primeiro uso real):** abra uma live que já tenha produtos na sacola e confira que todos aparecem com 🔒. Teste: marcar e desmarcar no modo Proteger; o ✕ some nos protegidos; recarregue a página (F5) e os 🔒 continuam. Clique em **Limpar → 5** e confira se os 5 destacados são os últimos, sem protegidos nem o No ar; **Cancelar** não remove nada; **Confirmar** remove e o aviso diz quantos saíram. Anote para mim: a numeração dos cards muda depois de remover? (e, se der, capture um DELETE com vários ids, para eu poder mandar todos num pedido só).
 - [ ] **Tamanho e posição lembrados:** mude o tamanho e a posição do painel, recarregue a página (F5) e confira que ele volta igual.
 - [ ] **Cinco fotos por linha:** confira que a grade mostra cerca de cinco fotos por linha no tamanho inicial.
 - [ ] **Lote visível durante um lote:** rode um lote e confira que o Lote continua à vista no topo, sem sumir atrás da Sacola.
