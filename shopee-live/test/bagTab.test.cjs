@@ -451,3 +451,47 @@ test('renderBagTab: ocupado ou Remover desligado esconde Limpar e Confirmar', ()
     assert.strictEqual(count(html, 'data-act="bag-limpar'), 0, JSON.stringify(extra));
   }
 });
+
+// ---------- Proteção por live e prévia do Limpar (funções puras) ----------
+
+test('storageKey: uma chave por live', () => {
+  assert.strictEqual(bagTab.storageKey('7911410'), 'sla-protect-7911410');
+  assert.notStrictEqual(bagTab.storageKey('1'), bagTab.storageKey('2'));
+});
+
+test('applyFirstRead: 1ª leitura protege o que já está na sacola; sacola vazia inicia sem ninguém; já iniciado não muda', () => {
+  assert.deepStrictEqual(bagTab.applyFirstRead(null, [card(1), card(2)]), { iniciado: true, protegidos: [1, 2] });
+  assert.deepStrictEqual(bagTab.applyFirstRead(undefined, []), { iniciado: true, protegidos: [] });
+  const salvo = { iniciado: true, protegidos: [2] };
+  assert.strictEqual(bagTab.applyFirstRead(salvo, [card(1), card(2), card(3)]), salvo);
+  // formato estragado no armazenamento vale como "não iniciado"
+  assert.deepStrictEqual(bagTab.applyFirstRead({ protegidos: 'x' }, [card(5)]), { iniciado: true, protegidos: [5] });
+});
+
+test('buildPreview: últimos N removíveis, sem protegidos nem o No ar', () => {
+  const itens = [card(1), card(2), card(3), card(4), card(5)];
+  assert.deepStrictEqual(bagTab.buildPreview(itens, [5], 4, 2), { aberto: true, n: 2, ids: [3, 2], faltam: 0 });
+  assert.deepStrictEqual(bagTab.buildPreview(itens, [1, 2, 3, 4, 5], null, 5), { aberto: true, n: 5, ids: [], faltam: 5 });
+});
+
+test('previewStillValid: só vale se nada mudou desde a prévia', () => {
+  const itens = [card(1), card(2), card(3)];
+  const prev = { aberto: true, n: 2, ids: [3, 2], faltam: 0 };
+  assert.strictEqual(bagTab.previewStillValid(prev, itens, [], null), true);
+  assert.strictEqual(bagTab.previewStillValid(prev, [card(1), card(2)], [], null), false); // um sumiu
+  assert.strictEqual(bagTab.previewStillValid(prev, itens, [3], null), false); // um virou protegido
+  assert.strictEqual(bagTab.previewStillValid(prev, itens, [], 2), false); // um virou o No ar
+  assert.strictEqual(bagTab.previewStillValid({ aberto: true, n: null, ids: [], faltam: 0 }, itens, [], null), true); // sem prévia: nada a invalidar
+  assert.strictEqual(bagTab.previewStillValid(null, itens, [], null), true);
+});
+
+test('clearForNewSession e noSessionState zeram a prévia, o modo e o pedido em andamento', () => {
+  const sujo = { ...bagTab.initialState(), limpar: { aberto: true, n: 5, ids: [1], faltam: 0 }, modo: 'proteger', protegidos: [1], confirmando: 3, fixando: true };
+  for (const s of [bagTab.clearForNewSession(sujo), bagTab.noSessionState(sujo)]) {
+    assert.strictEqual(s.limpar, null);
+    assert.strictEqual(s.modo, 'mostrar');
+    assert.deepStrictEqual(s.protegidos, []);
+    assert.strictEqual(s.confirmando, null);
+    assert.strictEqual(s.fixando, false);
+  }
+});

@@ -15,6 +15,7 @@
 
   // Aviso quando a Shopee não trocou o produto: "(motivo: detalhe)" ou só "(motivo)".
   const CONFIRMA_MS = 4000;
+  const LIMPAR_MS = 15000; // a prévia do Limpar some sozinha
   const AVISO_RM_DESLIGADO = 'O Remover foi desligado nesta live após 2 erros. Use a tela da Shopee.';
   const AVISO_PIN_DESLIGADO = 'O Mover p/ cima foi desligado nesta live após 2 erros. Use a tela da Shopee.';
 
@@ -25,7 +26,7 @@
   }
 
   function initialState() {
-    return { status: 'idle', itens: [], total: 0, maxItems: 0, query: '', desatualizada: false, erro: '', falhas: 0, modo: 'mostrar', noAr: null, trocando: false, aviso: '' };
+    return { status: 'idle', itens: [], total: 0, maxItems: 0, query: '', desatualizada: false, erro: '', falhas: 0, modo: 'mostrar', noAr: null, trocando: false, aviso: '', protegidos: [], limpar: null, confirmando: null, fixando: false };
   }
 
   function shouldPoll(s) {
@@ -49,9 +50,35 @@
 
   // O que é da live anterior e não pode passar para outra: "No ar", "trocando" e avisos de erro.
   // Fica só o aviso de Mostrar desligado (a trava vale até recarregar a página, não por live).
+  // ---- Proteção por live (guardada em chrome.storage.local) e prévia do Limpar: funções puras ----
+  function storageKey(sessionId) {
+    return 'sla-protect-' + sessionId;
+  }
+
+  // 1ª leitura da sacola de uma live: tudo o que já está nela fica protegido. Já iniciado: não muda nada.
+  function applyFirstRead(saved, itens) {
+    if (saved && saved.iniciado === true && Array.isArray(saved.protegidos)) return saved;
+    return { iniciado: true, protegidos: SLA.protect.initialSnapshot(itens) };
+  }
+
+  // Prévia do Limpar: os N últimos removíveis (sem protegidos nem o No ar).
+  function buildPreview(itens, protegidos, noAr, n) {
+    const r = SLA.protect.pickLast(itens, protegidos, noAr, n);
+    return { aberto: true, n, ids: r.ids, faltam: r.faltam };
+  }
+
+  // A prévia só vale se nada mudou: todos os ids ainda estão na sacola, nenhum virou protegido nem o No ar.
+  function previewStillValid(prev, itens, protegidos, noAr) {
+    if (!prev || !Array.isArray(prev.ids) || !prev.ids.length) return true;
+    const naSacola = new Set((itens || []).map((c) => String(c.itemId)));
+    return prev.ids.every((id) => naSacola.has(String(id))
+      && !SLA.protect.isProtected(protegidos, id)
+      && !(noAr != null && String(id) === String(noAr)));
+  }
+
   function semRestosDaLive(prev) {
     const fica = prev && (prev.aviso === AVISO_DESLIGADO || prev.aviso === AVISO_PIN_DESLIGADO || prev.aviso === AVISO_RM_DESLIGADO) ? prev.aviso : '';
-    return { noAr: null, trocando: false, fixando: false, confirmando: null, aviso: fica };
+    return { noAr: null, trocando: false, fixando: false, confirmando: null, limpar: null, modo: 'mostrar', protegidos: [], aviso: fica };
   }
 
   // Sessão sem "?session=" na URL: mensagem própria, sem lista e sem contar como falha de leitura.
@@ -212,7 +239,14 @@
           descartada = true; // a URL mudou de live durante a leitura: o resultado não vale mais
         } else {
           state = nextState(state, r);
-          if (r && r.ok) idDaLista = passo.sessionId;
+          if (r && r.ok) {
+            idDaLista = passo.sessionId;
+            await garantirProtecao(passo.sessionId, r.items); // 1ª leitura da live: protege o que já está na sacola
+            if (state.limpar && !previewStillValid(state.limpar, state.itens, state.protegidos, state.noAr)) {
+              pararTimerLimpar();
+              state = { ...state, limpar: null, aviso: 'A sacola mudou; cancelei a prévia. Escolha de novo.' };
+            }
+          }
           ultimaLeitura = Date.now();
         }
       } catch (e) {
@@ -317,6 +351,7 @@
       const card = cardByItemId(state.itens, valor);
       if (!card) return;
       if (state.noAr != null && String(card.itemId) === String(state.noAr)) return; // nunca o que está no ar
+      if (SLA.protect && SLA.protect.isProtected(state.protegidos, card.itemId)) return; // nunca o protegido (🔒)
       if (state.confirmando == null || String(state.confirmando) !== String(card.itemId)) {
         limparConfirmacao();
         state = { ...state, confirmando: card.itemId };
@@ -357,16 +392,137 @@
       if (reler) ler().catch(() => {});
     }
 
+    // ---- Proteção (🔒): guardada por live no navegador; 1ª leitura de cada live protege o que já está na sacola ----
+    let idProtecao = null; // sessão cuja proteção está carregada em state.protegidos
+    let carregando = null; // promessa em andamento (evita carregar duas vezes a mesma live)
+    function lerArmazenado(chave) {
+      return new Promise((resolve) => {
+        try { chrome.storage.local.get(chave, (o) => resolve((o && o[chave]) || null)); } catch (e) { resolve(null); }
+      });
+    }
+    function gravarProtecao(sessionId) {
+      try { chrome.storage.local.set({ [storageKey(sessionId)]: { iniciado: true, protegidos: state.protegidos } }); } catch (e) { /* sem armazenamento */ }
+    }
+    function garantirProtecao(sessionId, itens) {
+      if (!SLA.protect || idProtecao === sessionId) return Promise.resolve();
+      if (carregando && carregando.sessionId === sessionId) return carregando.promessa;
+      const promessa = (async () => {
+        const salvo = await lerArmazenado(storageKey(sessionId));
+        const r = applyFirstRead(salvo, itens);
+        if (r !== salvo) { try { chrome.storage.local.set({ [storageKey(sessionId)]: r }); } catch (e) { /* ignora */ } }
+        if (SLA.bag.sessionIdFromHref(location.href) === sessionId) { // a URL pode ter mudado de live durante a leitura
+          state = { ...state, protegidos: r.protegidos.slice() };
+          idProtecao = sessionId;
+        }
+      })().finally(() => { carregando = null; });
+      carregando = { sessionId, promessa };
+      return promessa;
+    }
+    SLA.bagTab.noteBag = (sessionId, bag) => garantirProtecao(String(sessionId), (bag && bag.items) || []);
+    // Lê a sacola uma vez logo que a página abre, mesmo com a aba Sacola fechada: é essa 1ª leitura que protege
+    // o que já estava na sacola antes de a live começar (e antes de qualquer adição do lote).
+    setTimeout(() => { ler().catch(() => {}); }, 1500);
+
+    // ---- Limpar em lote: prévia na grade + Confirmar; só clique real; um Confirmar = um lote ----
+    const REMOVER_MODO = 'um_a_um'; // passa a 'junto' só depois de provar na live que a Shopee aceita vários ids num pedido
+    let timerLimpar = null;
+    function pararTimerLimpar() { if (timerLimpar) { clearTimeout(timerLimpar); timerLimpar = null; } }
+    function fecharLimpar(aviso) {
+      pararTimerLimpar();
+      state = { ...state, limpar: null, ...(aviso ? { aviso } : {}) };
+      redesenhar();
+    }
+    function armarTimerLimpar() {
+      pararTimerLimpar();
+      timerLimpar = setTimeout(() => { timerLimpar = null; if (state.limpar) fecharLimpar(); }, LIMPAR_MS);
+    }
+    const pausar = (ms) => new Promise((res) => setTimeout(res, ms));
+
+    async function limparOk(ev) {
+      if (!ev || ev.isTrusted !== true || ev.type !== 'click') return;
+      if (!guardaRm || !SLA.protect) return;
+      const l = state.limpar;
+      if (!l || !l.n || !Array.isArray(l.ids) || !l.ids.length) return;
+      const pode = SLA.showGuard.canShow(guardaRm, Date.now(), ev);
+      if (!pode.ok) {
+        if (pode.motivo === 'desligado') fecharLimpar(AVISO_RM_DESLIGADO);
+        return;
+      }
+      const sessionId = SLA.bag.sessionIdFromHref(location.href);
+      if (!sessionId || sessionId !== idDaLista || sessionId !== idProtecao) return fecharLimpar();
+      if (!previewStillValid(l, state.itens, state.protegidos, state.noAr)) return fecharLimpar('A sacola mudou; cancelei a prévia. Escolha de novo.');
+      // Última conferência, na hora de enviar: nunca protegido nem o No ar.
+      const ids = l.ids.filter((id) => !SLA.protect.isProtected(state.protegidos, id) && String(id) !== String(state.noAr));
+      if (!ids.length) return fecharLimpar();
+      guardaRm = SLA.showGuard.startShow(guardaRm, Date.now());
+      pararTimerLimpar();
+      state = { ...state, fixando: true, limpar: null };
+      redesenhar();
+      let r = null;
+      try {
+        r = await SLA.bag.removeItems(sessionId, ids, undefined, { modo: REMOVER_MODO });
+        guardaRm = SLA.showGuard.finishShow(guardaRm, { ok: !!(r && r.ok) });
+      } catch (e) {
+        if (guardaRm.emAndamento) guardaRm = SLA.showGuard.finishShow(guardaRm, { ok: false });
+        r = { ok: false, removidos: [], falhou: { itemId: null, reason: 'rede', detail: String((e && e.message) || e) } };
+      }
+      // Relê a sacola e só conta como removido o que realmente saiu (a Shopee demora um instante a refletir).
+      const sairam = () => ids.filter((id) => !state.itens.some((c) => String(c.itemId) === String(id))).length;
+      state = { ...state, falhas: 0 };
+      await pausar(800);
+      await ler();
+      if (sairam() < ids.length && r && (r.ok || (r.removidos && r.removidos.length))) { await pausar(1500); await ler(); }
+      const gone = state.status === 'ok' ? sairam() : (r && r.removidos ? r.removidos.length : 0);
+      let aviso;
+      if (guardaRm.desligado) aviso = AVISO_RM_DESLIGADO;
+      else if (r && r.ok && gone === ids.length) aviso = `${gone} ${gone === 1 ? 'produto removido' : 'produtos removidos'} da sacola.`;
+      else {
+        const f = r && r.falhou;
+        const motivo = f ? ` (${f.reason}${f.detail ? `: ${f.detail}` : ''})` : '';
+        aviso = `${gone} de ${ids.length} removidos${r && r.ok ? '; os outros ainda aparecem na sacola. Confira.' : `; a Shopee não aceitou o resto${motivo}.`}`;
+      }
+      state = { ...state, fixando: false, aviso };
+      redesenhar();
+    }
+
     SLA.panel.registerArea('sacola', render, {
       actions: {
         'bag-q': (el) => { state = { ...state, query: el.value }; SLA.panel.redraw(); },
         'bag-tile': (el, ev) => mostrar(el, ev).catch(() => {}),
         'bag-pin': (el, ev) => mover(el, ev).catch(() => {}),
         'bag-rm': (el, ev) => remover(el, ev).catch(() => {}),
+        'bag-protect': (el, ev) => {
+          if (!ev || ev.isTrusted !== true || ev.type !== 'click' || !SLA.protect) return;
+          const card = cardByItemId(state.itens, el && el.dataset ? el.dataset.item : undefined);
+          const sessionId = SLA.bag.sessionIdFromHref(location.href);
+          if (!card || !sessionId || sessionId !== idDaLista || sessionId !== idProtecao) return;
+          state = { ...state, protegidos: SLA.protect.toggle(state.protegidos, card.itemId) };
+          gravarProtecao(sessionId);
+          redesenhar();
+        },
+        'bag-limpar': (el, ev) => {
+          if (!ev || ev.type !== 'click') return;
+          if (state.limpar) return fecharLimpar();
+          state = { ...state, limpar: { aberto: true, n: null, ids: [], faltam: 0 } };
+          armarTimerLimpar();
+          redesenhar();
+        },
+        'bag-limpar-n': (el, ev) => {
+          if (!ev || ev.type !== 'click' || !SLA.protect) return;
+          const n = Number(el && el.dataset ? el.dataset.n : 0);
+          if (!SLA.protect.LIMITES.includes(n)) return;
+          state = { ...state, limpar: buildPreview(state.itens, state.protegidos, state.noAr, n) };
+          armarTimerLimpar();
+          redesenhar();
+        },
+        'bag-limpar-cancel': (el, ev) => { if (ev && ev.type === 'click') fecharLimpar(); },
+        'bag-limpar-ok': (el, ev) => limparOk(ev).catch(() => { state = { ...state, fixando: false }; redesenhar(); }),
         'bag-modo': (el, ev) => {
           if (ev && ev.type && ev.type !== 'click') return;
-          if (!el || el.disabled || el.dataset.modo !== 'mostrar') return; // só "mostrar" existe por enquanto
-          state = { ...state, modo: 'mostrar' };
+          const modo = el && el.dataset ? el.dataset.modo : '';
+          if (!el || el.disabled || (modo !== 'mostrar' && modo !== 'proteger')) return;
+          pararTimerLimpar();
+          state = { ...state, modo, limpar: null, confirmando: null };
           redesenhar();
         },
         'bag-refresh': (el, ev) => {
@@ -388,7 +544,7 @@
 
   SLA.bagTab = {
     POLL_MS, MAX_FALHAS, FRESCO_MS, AVISO_DESLIGADO, AVISO_PIN_DESLIGADO, AVISO_RM_DESLIGADO, avisoDeErro, initialState, renderBagTab, shouldPoll, nextState,
-    noSessionState, clearForNewSession, cardByItemId, sessionStep, markImageFailed, failedImages, init,
+    noSessionState, clearForNewSession, storageKey, applyFirstRead, buildPreview, previewStillValid, cardByItemId, sessionStep, markImageFailed, failedImages, init,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = SLA.bagTab;
 

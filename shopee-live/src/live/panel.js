@@ -438,7 +438,12 @@
             if (m && m.batch) state.batch = m.batch;
             return m;
           },
-          readBag: (sid) => SLA.bag.readBag(sid),
+          // A 1ª leitura da sacola da live (antes de qualquer adição) protege o que já estava nela.
+          readBag: async (sid) => {
+            const b = await SLA.bag.readBag(sid);
+            try { if (b && b.ok && SLA.bagTab && typeof SLA.bagTab.noteBag === 'function') await SLA.bagTab.noteBag(sid, b); } catch (_) { /* ignora */ }
+            return b;
+          },
           addItems: (sid, entries) => SLA.bag.addItems(sid, entries),
           wait: (ms) => new Promise((res) => setTimeout(res, ms)),
         },
